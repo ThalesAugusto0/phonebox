@@ -418,6 +418,16 @@ public sealed partial class ConfigStore(string path)
     /// <summary>Save refused: the file changed after the caller loaded it (<see cref="Save"/> with an expected version).</summary>
     public const string Conflict = "The settings were changed in another tab or window after this one loaded them. Reload the page to see them; the changes made here were not saved.";
 
+    /// <summary>True when <paramref name="header"/> (X-Config-Version) names a version other than the current one.
+    /// Missing or unparseable is not a conflict: scripts and other callers that never send it still go through.</summary>
+    public bool VersionConflict(string? header) => long.TryParse(header, out var expected) && expected != Version;
+
+    /// <summary>
+    /// Advances <see cref="Version"/> without touching the saved settings: for a write that bypasses <see cref="Save"/>
+    /// (a shortcut icon upload or removal), so another tab's own optimistic-concurrency check still notices it.
+    /// </summary>
+    public void Touch() { lock (_lock) { try { File.SetLastWriteTimeUtc(path, DateTime.UtcNow); } catch { } } }
+
     /// <summary>
     /// Validates and saves the settings. Returns an error message, or null on success. With
     /// <paramref name="expectedVersion"/> (the <see cref="Version"/> the caller loaded), a save over a newer file is

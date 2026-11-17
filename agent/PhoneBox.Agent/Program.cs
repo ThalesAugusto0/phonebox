@@ -795,17 +795,22 @@ app.MapGet("/api/shortcuts/icon", (string id, ConfigStore cfg, ShortcutIconUploa
 app.MapPost("/api/settings/shortcut-icon", async (string id, HttpRequest req, ConfigStore cfg, ShortcutIconUploads icons) =>
 {
     if (!cfg.Get().Shortcuts.Any(s => s.Id == id)) return Results.NotFound(new { error = "Unknown shortcut (save it once first)" });
+    if (cfg.VersionConflict(req.Headers["X-Config-Version"])) return Results.Json(new { error = ConfigStore.Conflict }, statusCode: StatusCodes.Status409Conflict);
     var bytes = await ShortcutIconUploads.ReadBounded(req.Body);
     var err = icons.Save(id, req.ContentType, bytes);
-    return err is null ? Results.Ok() : Results.BadRequest(new { error = err });
+    if (err is not null) return Results.BadRequest(new { error = err });
+    cfg.Touch();
+    return Results.Ok(new { version = cfg.Version });
 });
 
 // Removes a shortcut's uploaded icon; it falls back to its auto-detected program icon, or the emoji.
-app.MapDelete("/api/settings/shortcut-icon", (string id, ConfigStore cfg, ShortcutIconUploads icons) =>
+app.MapDelete("/api/settings/shortcut-icon", (string id, HttpRequest req, ConfigStore cfg, ShortcutIconUploads icons) =>
 {
     if (!cfg.Get().Shortcuts.Any(s => s.Id == id)) return Results.NotFound();
+    if (cfg.VersionConflict(req.Headers["X-Config-Version"])) return Results.Json(new { error = ConfigStore.Conflict }, statusCode: StatusCodes.Status409Conflict);
     icons.Remove(id);
-    return Results.Ok();
+    cfg.Touch();
+    return Results.Ok(new { version = cfg.Version });
 });
 
 app.Lifetime.ApplicationStarted.Register(() =>

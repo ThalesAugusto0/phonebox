@@ -308,6 +308,23 @@ public class ConfigConcurrencyTests
     }
 
     [Fact]
+    public void TouchAdvancesVersionSoAnotherTabsConflictCheckNoticesIt()
+    {
+        var (s, path) = NewStore();
+        try
+        {
+            var loaded = s.Version;
+            Assert.False(s.VersionConflict(loaded.ToString()));
+            Assert.False(s.VersionConflict(null)); // no header sent: never a conflict
+            Thread.Sleep(20);
+            s.Touch();
+            Assert.True(s.VersionConflict(loaded.ToString()));
+            Assert.False(s.VersionConflict(s.Version.ToString()));
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
     public void GeneratedKeysPersistForANewConfigWithoutReplacingUnreadableFiles()
     {
         var dir = Directory.CreateTempSubdirectory("phonebox-config-");

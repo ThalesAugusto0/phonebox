@@ -2106,9 +2106,12 @@ function customIconField(s) {
       e.target.value = '';
       if (!f) return;
       try {
-        const res = await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+        const headers = { 'Content-Type': f.type };
+        if (cfgVersion) headers['X-Config-Version'] = cfgVersion;
+        const res = await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'POST', headers, body: f });
         const j = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(j.error || 'Upload failed');
+        if (j.version) cfgVersion = j.version;
         toast('Icon uploaded.');
       } catch (err) { toast(err.message, true); }
       refresh();
@@ -2119,8 +2122,12 @@ function customIconField(s) {
       h('button', { class: 'btn sm', type: 'button', onclick: () => file.click() }, 'Upload…'),
       h('button', { class: 'btn sm', type: 'button', onclick: async () => {
         try {
-          const res = await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-          if (!res.ok) throw new Error('Remove failed');
+          const headers = {};
+          if (cfgVersion) headers['X-Config-Version'] = cfgVersion;
+          const res = await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE', headers });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(j.error || 'Remove failed');
+          if (j.version) cfgVersion = j.version;
           toast('Custom icon removed.');
         } catch (err) { toast(err.message, true); }
         refresh();
