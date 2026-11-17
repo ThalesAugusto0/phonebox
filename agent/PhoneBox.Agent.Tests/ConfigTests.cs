@@ -168,6 +168,7 @@ public class LanTests
     [InlineData("/api/pair/claim/x", false)]
     [InlineData("/api/shortcuts/test", false)]
     [InlineData("/api/shortcuts/icon", true)]
+    [InlineData("/api/settings/shortcut-icon", false)]
     [InlineData("/api/claude/hook", false)]
     [InlineData("/api/obs-test", false)]
     [InlineData("/api/ha/test", false)]

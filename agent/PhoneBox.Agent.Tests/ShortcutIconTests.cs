@@ -42,4 +42,13 @@ public sealed class ShortcutIconTests
     [InlineData("this-program-does-not-exist-12345", false)]
     public void HasIconAgreesWithIcon(string cmd, bool expected) =>
         Assert.Equal(expected, ShortcutIcons.HasIcon(new Shortcut { Cmd = cmd }));
+
+    [Fact]
+    public void HasIconCacheSurvivesAClearWithTheSameAnswer()
+    {
+        var sc = new Shortcut { Cmd = "this-cache-test-command-does-not-exist" };
+        Assert.False(ShortcutIcons.HasIcon(sc));
+        ShortcutIcons.ClearHasIconCache();
+        Assert.False(ShortcutIcons.HasIcon(sc));
+    }
 }

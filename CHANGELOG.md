@@ -9,6 +9,8 @@
   [Muhammadrizo04](https://github.com/Muhammadrizo04)).
 - Discord widget: server tiles drop their border/background card, showing just the icon, name and channel count, so
   more servers fit per row.
+- A shortcut key shows a real icon instead of only an emoji: the program's own icon when the command is an actual
+  file on disk, or a custom PNG/WEBP/SVG you upload for it in Settings. Falls back to the emoji when neither exists.
 
 ## 0.9.16 — 2026-11-17
 

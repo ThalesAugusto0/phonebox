@@ -2088,7 +2088,7 @@ function customIconField(s) {
       e.target.value = '';
       if (!f) return;
       try {
-        const res = await fetch(`/api/shortcuts/icon?id=${encodeURIComponent(s.id)}`, { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+        const res = await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
         const j = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(j.error || 'Upload failed');
         toast('Icon uploaded.');
@@ -2100,7 +2100,7 @@ function customIconField(s) {
       preview, file,
       h('button', { class: 'btn sm', type: 'button', onclick: () => file.click() }, 'Upload…'),
       h('button', { class: 'btn sm', type: 'button', onclick: async () => {
-        await fetch(`/api/shortcuts/icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
+        await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
         toast('Custom icon removed.');
         refresh();
       } }, 'Remove')),

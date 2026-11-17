@@ -356,6 +356,7 @@ app.MapPut("/api/settings", async (HttpRequest req, ConfigStore cfg, ControlDeck
     photos.SettingsSaved();
     deck.ReconcileRadios(waitForGate: true);
     icons.Cleanup(cfg.Get().Shortcuts.Select(s => s.Id)); // drop uploads for shortcuts that got deleted
+    ShortcutIcons.ClearHasIconCache();
     log.LogInformation("settings saved");
     return Results.Ok(new { version = cfg.Version });
 });
@@ -783,12 +784,15 @@ app.MapGet("/api/shortcuts/icon", (string id, ConfigStore cfg, ShortcutIconUploa
     (byte[] Bytes, string ContentType)? icon = icons.Read(id);
     if (icon is null && ShortcutIcons.Icon(sc) is { } png) icon = (png, "image/png");
     if (icon is not { } found) return Results.NotFound();
-    res.Headers["Content-Security-Policy"] = "script-src 'none'";
+    res.Headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+    res.Headers["X-Content-Type-Options"] = "nosniff";
     return Results.File(found.Bytes, found.ContentType);
 });
 
 // Uploads a custom icon for a shortcut (PNG, WEBP or SVG, 512 KB max); replaces any previous upload for it.
-app.MapPost("/api/shortcuts/icon", async (string id, HttpRequest req, ConfigStore cfg, ShortcutIconUploads icons) =>
+// Under /api/settings, not /api/shortcuts: local-only like the rest of the settings API, since over Wi-Fi the
+// phone only ever needs to read an icon (GET /api/shortcuts/icon, above), never write one.
+app.MapPost("/api/settings/shortcut-icon", async (string id, HttpRequest req, ConfigStore cfg, ShortcutIconUploads icons) =>
 {
     if (!cfg.Get().Shortcuts.Any(s => s.Id == id)) return Results.NotFound(new { error = "Unknown shortcut (save it once first)" });
     var bytes = await ShortcutIconUploads.ReadBounded(req.Body);
@@ -797,7 +801,7 @@ app.MapPost("/api/shortcuts/icon", async (string id, HttpRequest req, ConfigStor
 });
 
 // Removes a shortcut's uploaded icon; it falls back to its auto-detected program icon, or the emoji.
-app.MapDelete("/api/shortcuts/icon", (string id, ConfigStore cfg, ShortcutIconUploads icons) =>
+app.MapDelete("/api/settings/shortcut-icon", (string id, ConfigStore cfg, ShortcutIconUploads icons) =>
 {
     if (!cfg.Get().Shortcuts.Any(s => s.Id == id)) return Results.NotFound();
     icons.Remove(id);
