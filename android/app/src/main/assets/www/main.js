@@ -513,7 +513,7 @@ export function keyButton(s) {
   b.style.setProperty('--k', s.color || '#6b7280');
   b.dataset.id = s.id;
   b.addEventListener('click', () => runShortcut(b, s.id));
-  if (s.hasIcon) applyShortcutIcon(icon, s.id);
+  if (s.iconRev != null) applyShortcutIcon(icon, s.id);
   return b;
 }
 

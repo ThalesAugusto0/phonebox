@@ -24,6 +24,18 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
     /// <summary>Whether a custom icon was uploaded for a shortcut, without reading it.</summary>
     public bool Exists(string id) => ExtensionByContentType.Values.Any(ext => File.Exists(PathFor(id, ext)));
 
+    /// <summary>A value that changes when the uploaded icon is replaced or removed, or null when none was uploaded.</summary>
+    public long? Revision(string id)
+    {
+        foreach (var ext in ExtensionByContentType.Values)
+        {
+            var path = PathFor(id, ext);
+            if (!File.Exists(path)) continue;
+            try { return File.GetLastWriteTimeUtc(path).Ticks; } catch { return null; }
+        }
+        return null;
+    }
+
     /// <summary>The uploaded icon for a shortcut and its content type, or null when none was uploaded.</summary>
     public (byte[] Bytes, string ContentType)? Read(string id)
     {

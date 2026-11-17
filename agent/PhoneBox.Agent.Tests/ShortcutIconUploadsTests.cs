@@ -26,6 +26,21 @@ public sealed class ShortcutIconUploadsTests : IDisposable
         Assert.True(_uploads.Exists("terminal"));
     }
 
+    [Fact]
+    public void RevisionChangesWhenTheUploadIsReplaced()
+    {
+        Assert.Null(_uploads.Revision("terminal"));
+        Assert.Null(_uploads.Save("terminal", "image/png", Png));
+        var first = _uploads.Revision("terminal");
+        Assert.NotNull(first);
+
+        Assert.Null(_uploads.Save("terminal", "image/svg+xml", Svg));
+        Assert.NotEqual(first, _uploads.Revision("terminal"));
+
+        _uploads.Remove("terminal");
+        Assert.Null(_uploads.Revision("terminal"));
+    }
+
     [Theory]
     [InlineData("image/png")]
     [InlineData("image/webp")]

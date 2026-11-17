@@ -14,13 +14,22 @@ internal static class ShortcutIcons
 {
     // Keyed by command, not shortcut id: resolving a path walks every PATH directory on Windows, so repeating it
     // for every shortcut on every /api/config request is wasteful. A command only changes when the config is
-    // saved, so Program.cs's /api/settings PUT clears this then.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> HasIconCache = new();
+    // saved, so Program.cs's /api/settings PUT clears this then. Caches the resolved path itself (not just
+    // whether one exists) so HasIcon and Revision share one lookup instead of resolving it twice each.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> ResolvedPathCache = new();
+    private static string? CachedResolvePath(string cmd) => ResolvedPathCache.GetOrAdd(cmd, ResolvePath);
 
     /// <summary>Cheap check for whether <see cref="Icon"/> is worth asking for, without extracting one.</summary>
-    public static bool HasIcon(Shortcut sc) => HasIconCache.GetOrAdd(sc.Cmd, cmd => ResolvePath(cmd) is not null);
+    public static bool HasIcon(Shortcut sc) => CachedResolvePath(sc.Cmd) is not null;
 
-    public static void ClearHasIconCache() => HasIconCache.Clear();
+    /// <summary>A value that changes when the detected program's own icon could have changed (it was reinstalled).</summary>
+    public static long? Revision(Shortcut sc)
+    {
+        if (CachedResolvePath(sc.Cmd) is not { } path) return null;
+        try { return File.GetLastWriteTimeUtc(path).Ticks; } catch { return null; }
+    }
+
+    public static void ClearHasIconCache() => ResolvedPathCache.Clear();
 
     public static byte[]? Icon(Shortcut sc)
     {

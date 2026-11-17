@@ -51,4 +51,10 @@ public sealed class ShortcutIconTests
         ShortcutIcons.ClearHasIconCache();
         Assert.False(ShortcutIcons.HasIcon(sc));
     }
+
+    [Theory]
+    [InlineData("builtin:lock")]
+    [InlineData("this-program-does-not-exist-12345")]
+    public void RevisionAgreesWithHasIcon(string cmd) =>
+        Assert.Null(ShortcutIcons.Revision(new Shortcut { Cmd = cmd }));
 }

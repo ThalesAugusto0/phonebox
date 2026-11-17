@@ -2080,7 +2080,19 @@ function customIconField(s) {
     h('span', { class: 'hint' }, 'Save once to upload a custom icon image here.'));
 
   const preview = h('img', { class: 'custom-icon-preview', alt: '', onerror: () => (preview.style.visibility = 'hidden'), onload: () => (preview.style.visibility = 'visible') });
-  const refresh = () => { preview.style.visibility = 'hidden'; preview.src = `/api/shortcuts/icon?id=${encodeURIComponent(s.id)}&v=${Date.now()}`; };
+  // fetch(), not <img src>: an <img> whose request 404s (most shortcuts have no icon at all) logs a console error;
+  // fetch()'s own failure does not, and a plain 404 is not an error here — there may be nothing to show.
+  let previewUrl = null;
+  const refresh = async () => {
+    preview.style.visibility = 'hidden';
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+    try {
+      const res = await fetch(`/api/shortcuts/icon?id=${encodeURIComponent(s.id)}&v=${Date.now()}`);
+      if (!res.ok) return;
+      previewUrl = URL.createObjectURL(await res.blob());
+      preview.src = previewUrl;
+    } catch (_) {}
+  };
   refresh();
   const file = h('input', { type: 'file', accept: '.png,.webp,.svg,image/png,image/webp,image/svg+xml', style: { display: 'none' },
     onchange: async (e) => {
