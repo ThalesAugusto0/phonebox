@@ -192,6 +192,7 @@ table.items td.val { font-family: Consolas, monospace; font-size: 12px; max-widt
 .emojis button:hover { background: var(--panel-2); }
 input[type=color] { width: 42px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); padding: 2px; }
 .icon-input { width: 70px; text-align: center; font-size: 20px; }
+.custom-icon-preview { width: 30px; height: 30px; object-fit: contain; border-radius: 6px; background: var(--panel-2); }
 
 /* smart stack builder in inspector */
 .stack-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
@@ -2066,9 +2067,44 @@ function renderEditor() {
         text('label', t('s.k.label'), t('s.k.labelHint')),
         h('div', { class: 'field' }, h('label', {}, t('s.z.iconEmoji')), h('div', { class: 'row' }, iconIn),
           h('div', { class: 'emojis' }, ...EMOJIS.map((em) => h('button', { onclick: () => { iconIn.value = em; upd('icon', em); } }, em)))),
+        customIconField(s),
         h('div', { class: 'field' }, h('label', {}, t('s.z.colour')), h('div', { class: 'row' }, colorIn), sw)),
       h('div', {}, ...actionFields(s, upd, text, cmdIn, preset),
         h('div', { class: 'field' }, h('label', {}, 'Id'), h('code', {}, s.id || t('s.k.genOnSave'))))));
+}
+
+// A custom icon image (PNG, WEBP or SVG) overrides both the emoji and the auto-detected program icon on the phone.
+// Needs a saved shortcut id, so a brand new one must be saved once before it can be uploaded.
+function customIconField(s) {
+  if (!s.id) return h('div', { class: 'field' }, h('label', {}, 'Custom icon image'),
+    h('span', { class: 'hint' }, 'Save once to upload a custom icon image here.'));
+
+  const preview = h('img', { class: 'custom-icon-preview', alt: '', onerror: () => (preview.style.visibility = 'hidden'), onload: () => (preview.style.visibility = 'visible') });
+  const refresh = () => { preview.style.visibility = 'hidden'; preview.src = `/api/shortcuts/icon?id=${encodeURIComponent(s.id)}&v=${Date.now()}`; };
+  refresh();
+  const file = h('input', { type: 'file', accept: '.png,.webp,.svg,image/png,image/webp,image/svg+xml', style: { display: 'none' },
+    onchange: async (e) => {
+      const f = e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      try {
+        const res = await fetch(`/api/shortcuts/icon?id=${encodeURIComponent(s.id)}`, { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || 'Upload failed');
+        toast('Icon uploaded.');
+      } catch (err) { toast(err.message, true); }
+      refresh();
+    } });
+  return h('div', { class: 'field' }, h('label', {}, 'Custom icon image'),
+    h('div', { class: 'row', style: { alignItems: 'center', gap: '8px' } },
+      preview, file,
+      h('button', { class: 'btn sm', type: 'button', onclick: () => file.click() }, 'Upload…'),
+      h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+        await fetch(`/api/shortcuts/icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
+        toast('Custom icon removed.');
+        refresh();
+      } }, 'Remove')),
+    h('span', { class: 'hint' }, 'PNG, WEBP or SVG, 512 KB max. Overrides the emoji (and the app’s own icon) on the phone.'));
 }
 
 // What a key does: run a program, press keys, type text or run a macro; plus the on / off (toggle) options.

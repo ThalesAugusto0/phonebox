@@ -61,6 +61,22 @@ public class ConfigTests
     }
 
     [Fact]
+    public void ANewShortcutNeverReusesAJustDeletedOnesId()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"phonebox-config-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new ConfigStore(path);
+            Assert.Null(store.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "cmd.exe" } ] }"""));
+            Assert.Equal("terminal", store.Get().Shortcuts.Single().Id);
+
+            Assert.Null(store.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "wt.exe" } ] }"""));
+            Assert.Equal("terminal-2", store.Get().Shortcuts.Single().Id);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
     public void LegacyHomePageKeepsItsTilesAndOptions()
     {
         // 0.6.1: a fixed "home" page with options

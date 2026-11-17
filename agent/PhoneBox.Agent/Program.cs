@@ -56,6 +56,7 @@ builder.Services.AddSingleton(configStore);
 builder.Services.AddSingleton(endpoint);
 builder.Services.AddSingleton<AudioControl>();
 builder.Services.AddSingleton<AppCatalog>();
+builder.Services.AddSingleton<ShortcutIconUploads>();
 builder.Services.AddSingleton<PairingCodes>();
 builder.Services.AddSingleton<SpotifyControl>();
 builder.Services.AddSingleton<ControlDeck>();
@@ -343,7 +344,7 @@ app.MapGet("/api/settings", (ConfigStore cfg, HttpResponse res) =>
     return Results.Text(json, "application/json; charset=utf-8");
 });
 
-app.MapPut("/api/settings", async (HttpRequest req, ConfigStore cfg, ControlDeck deck, PhotoFrame photos, ILogger<Program> log) =>
+app.MapPut("/api/settings", async (HttpRequest req, ConfigStore cfg, ControlDeck deck, PhotoFrame photos, ShortcutIconUploads icons, ILogger<Program> log) =>
 {
     if (req.ContentType?.StartsWith("application/json") != true) return Results.StatusCode(415);
     using var r = new StreamReader(req.Body);
@@ -354,6 +355,7 @@ app.MapPut("/api/settings", async (HttpRequest req, ConfigStore cfg, ControlDeck
     deck.StopDisabledControls();
     photos.SettingsSaved();
     deck.ReconcileRadios(waitForGate: true);
+    icons.Cleanup(cfg.Get().Shortcuts.Select(s => s.Id)); // drop uploads for shortcuts that got deleted
     log.LogInformation("settings saved");
     return Results.Ok(new { version = cfg.Version });
 });
@@ -769,6 +771,36 @@ app.MapPost("/api/run/{id}", (string id, ConfigStore cfg, PushStore push, AudioC
 {
     var result = Shortcuts.Run(cfg.Get(), id, log, push, audio);
     return result is null ? Results.Ok() : Results.Problem(result);
+});
+
+// Real icon for a shortcut: an image the user uploaded (settings page) takes priority; otherwise its program's own
+// icon, when its command is an actual file on disk. 404 when neither exists (shell addresses, protocol handlers,
+// URLs, builtin: commands, and App Execution Alias stubs with no icon of their own), so the phone shows the emoji.
+app.MapGet("/api/shortcuts/icon", (string id, ConfigStore cfg, ShortcutIconUploads icons, HttpResponse res) =>
+{
+    if (cfg.Get().Shortcuts.FirstOrDefault(s => s.Id == id) is not { } sc) return Results.NotFound();
+    (byte[] Bytes, string ContentType)? icon = icons.Read(id);
+    if (icon is null && ShortcutIcons.Icon(sc) is { } png) icon = (png, "image/png");
+    if (icon is not { } found) return Results.NotFound();
+    res.Headers["Content-Security-Policy"] = "script-src 'none'";
+    return Results.File(found.Bytes, found.ContentType);
+});
+
+// Uploads a custom icon for a shortcut (PNG, WEBP or SVG, 512 KB max); replaces any previous upload for it.
+app.MapPost("/api/shortcuts/icon", async (string id, HttpRequest req, ConfigStore cfg, ShortcutIconUploads icons) =>
+{
+    if (!cfg.Get().Shortcuts.Any(s => s.Id == id)) return Results.NotFound(new { error = "Unknown shortcut (save it once first)" });
+    var bytes = await ShortcutIconUploads.ReadBounded(req.Body);
+    var err = icons.Save(id, req.ContentType, bytes);
+    return err is null ? Results.Ok() : Results.BadRequest(new { error = err });
+});
+
+// Removes a shortcut's uploaded icon; it falls back to its auto-detected program icon, or the emoji.
+app.MapDelete("/api/shortcuts/icon", (string id, ConfigStore cfg, ShortcutIconUploads icons) =>
+{
+    if (!cfg.Get().Shortcuts.Any(s => s.Id == id)) return Results.NotFound();
+    icons.Remove(id);
+    return Results.Ok();
 });
 
 app.Lifetime.ApplicationStarted.Register(() =>
