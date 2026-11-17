@@ -471,11 +471,19 @@ export async function runShortcut(btn, id) {
 }
 
 export function keyButton(s) {
-  const b = h('button', 'key' + (s.toggle ? ' toggle' : ''), h('span', 'k-icon', s.icon || '•'), h('span', 'k-label', s.label));
+  const icon = h('span', 'k-icon', s.icon || '•');
+  const b = h('button', 'key' + (s.toggle ? ' toggle' : ''), icon, h('span', 'k-label', s.label));
   b.style.setProperty('--k', s.color || '#6b7280');
   b.dataset.id = s.id;
   b.addEventListener('click', () => runShortcut(b, s.id));
+  applyShortcutIcon(icon, s.id);
   return b;
+}
+
+function applyShortcutIcon(icon, id) {
+  const img = new Image();
+  img.onload = () => { icon.replaceChildren(img); icon.classList.add('k-icon-img'); };
+  img.src = `${API}/shortcuts/icon?id=${encodeURIComponent(id)}`;
 }
 
 // ---------------------------------------------------------------- media (shared state, any number of widgets)

@@ -417,7 +417,8 @@ public sealed partial class ConfigStore(string path)
         try { cfg = JsonSerializer.Deserialize<AgentConfig>(json, ReadOpts) ?? throw new JsonException("empty"); }
         catch (JsonException ex) { return "Invalid JSON: " + ex.Message; }
 
-        cfg = Normalize(cfg);
+        var staleIds = Get().Shortcuts.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        cfg = Normalize(cfg, staleIds);
         foreach (var s in cfg.Shortcuts)
             if (string.IsNullOrWhiteSpace(s.Cmd)) return $"Shortcut '{s.Label}' has no command";
         if (cfg.Weather.Lat is < -90 or > 90 || cfg.Weather.Lon is < -180 or > 180) return "Invalid weather location";
@@ -440,7 +441,7 @@ public sealed partial class ConfigStore(string path)
     }
 
     /// <summary>Fills in defaults: builds pages from templates, migrates old pages, generates unique ids.</summary>
-    private static AgentConfig Normalize(AgentConfig c)
+    private static AgentConfig Normalize(AgentConfig c, IReadOnlySet<string>? staleIds = null)
     {
         c.Weather ??= new();
         c.CodexBar ??= new();
@@ -489,10 +490,11 @@ public sealed partial class ConfigStore(string path)
         {
             s.Label = s.Label?.Trim() ?? "";
             s.Icon = IconText.Repair(s.Icon);
-            var id = string.IsNullOrWhiteSpace(s.Id) ? Slug(s.Label) : Slug(s.Id);
+            var isNew = string.IsNullOrWhiteSpace(s.Id);
+            var id = isNew ? Slug(s.Label) : Slug(s.Id);
             if (id == "") id = "shortcut";
             var unique = id;
-            for (var i = 2; !used.Add(unique); i++) unique = $"{id}-{i}";
+            for (var i = 2; !used.Add(unique) || (isNew && staleIds?.Contains(unique) == true); i++) unique = $"{id}-{i}";
             s.Id = unique;
             if (string.IsNullOrWhiteSpace(s.Args)) s.Args = null;
             if (string.IsNullOrWhiteSpace(s.Cwd)) s.Cwd = null;
