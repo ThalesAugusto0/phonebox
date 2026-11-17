@@ -7,7 +7,7 @@ public sealed class ShortcutIconUploadsTests : IDisposable
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "phonebox-icon-uploads-" + Guid.NewGuid().ToString("N"));
     private readonly ShortcutIconUploads _uploads;
 
-    private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0, 0];
+    private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0];
     private static readonly byte[] Webp = [(byte)'R', (byte)'I', (byte)'F', (byte)'F', 0, 0, 0, 0, (byte)'W', (byte)'E', (byte)'B', (byte)'P'];
     private static readonly byte[] Svg = Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg'></svg>");
 
@@ -60,6 +60,10 @@ public sealed class ShortcutIconUploadsTests : IDisposable
         Assert.Contains("SVG", _uploads.Save("terminal", "image/svg+xml", Png));
         Assert.Null(_uploads.Read("terminal")); // the rejected upload left no file behind
     }
+
+    [Fact]
+    public void APngWithACorruptedSignatureIsRejected() =>
+        Assert.Contains("PNG", _uploads.Save("terminal", "image/png", [0x89, 0x50, 0x4E, 0x47, 0, 0, 0, 0]));
 
     [Fact]
     public void AnEmptyFileIsRejected() => Assert.Equal("The file is empty", _uploads.Save("terminal", "image/png", []));

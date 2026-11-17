@@ -2100,8 +2100,11 @@ function customIconField(s) {
       preview, file,
       h('button', { class: 'btn sm', type: 'button', onclick: () => file.click() }, 'Upload…'),
       h('button', { class: 'btn sm', type: 'button', onclick: async () => {
-        await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-        toast('Custom icon removed.');
+        try {
+          const res = await fetch(`/api/settings/shortcut-icon?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Remove failed');
+          toast('Custom icon removed.');
+        } catch (err) { toast(err.message, true); }
         refresh();
       } }, 'Remove')),
     h('span', { class: 'hint' }, 'PNG, WEBP or SVG, 512 KB max. Overrides the emoji (and the app’s own icon) on the phone.'));

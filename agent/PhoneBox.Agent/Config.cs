@@ -509,7 +509,7 @@ public sealed partial class ConfigStore(string path)
             var id = isNew ? Slug(s.Label) : Slug(s.Id);
             if (id == "") id = "shortcut";
             var unique = id;
-            for (var i = 2; !used.Add(unique) || (isNew && staleIds?.Contains(unique) == true); i++) unique = $"{id}-{i}";
+            for (var i = 2; (isNew && staleIds?.Contains(unique) == true) || !used.Add(unique); i++) unique = $"{id}-{i}";
             s.Id = unique;
             if (string.IsNullOrWhiteSpace(s.Args)) s.Args = null;
             if (string.IsNullOrWhiteSpace(s.Cwd)) s.Cwd = null;

@@ -77,6 +77,26 @@ public class ConfigTests
     }
 
     [Fact]
+    public void AStaleIdRejectedForANewShortcutDoesNotStealAKeptShortcutsId()
+    {
+        // A new shortcut's rejected (stale) candidate id must not occupy "used", or processing it before a kept
+        // shortcut that still owns that exact id would bump the kept one to an unrelated id instead.
+        var path = Path.Combine(Path.GetTempPath(), $"phonebox-config-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new ConfigStore(path);
+            Assert.Null(store.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "a.exe" }, { "label": "Terminal", "cmd": "b.exe" } ] }"""));
+            Assert.Equal(["terminal", "terminal-2"], store.Get().Shortcuts.Select(s => s.Id));
+
+            // "terminal" is deleted; a brand-new "Terminal" (no id, listed first) must not end up claiming
+            // "terminal-2" ahead of the shortcut that explicitly keeps it.
+            Assert.Null(store.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "c.exe" }, { "id": "terminal-2", "label": "Terminal", "cmd": "b.exe" } ] }"""));
+            Assert.Equal(["terminal-3", "terminal-2"], store.Get().Shortcuts.Select(s => s.Id));
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
     public void LegacyHomePageKeepsItsTilesAndOptions()
     {
         // 0.6.1: a fixed "home" page with options

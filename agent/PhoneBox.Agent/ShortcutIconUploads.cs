@@ -19,6 +19,7 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
     };
 
     private readonly string _dir = iconsDir ?? Path.Combine(AppPaths.ConfigDir, "icons");
+    private readonly Lock _gate = new();
 
     /// <summary>Whether a custom icon was uploaded for a shortcut, without reading it.</summary>
     public bool Exists(string id) => ExtensionByContentType.Values.Any(ext => File.Exists(PathFor(id, ext)));
@@ -63,13 +64,23 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
         if (!LooksValid(ext, bytes)) return $"That does not look like a valid {ext[1..].ToUpperInvariant()} file";
 
         Directory.CreateDirectory(_dir);
-        Remove(id); // drop a previous upload in a different format
-        File.WriteAllBytes(PathFor(id, ext), bytes);
+        var target = PathFor(id, ext);
+        var tmp = target + ".tmp";
+        lock (_gate)
+        {
+            // Written in full before anything existing is touched: a failed write (e.g. a full disk) leaves
+            // whatever icon was there before untouched, instead of losing it to a Remove() with no replacement.
+            File.WriteAllBytes(tmp, bytes);
+            RemoveLocked(id);
+            File.Move(tmp, target, overwrite: true);
+        }
         return null;
     }
 
     /// <summary>Deletes a shortcut's custom icon, in whichever format it was saved.</summary>
-    public void Remove(string id)
+    public void Remove(string id) { lock (_gate) RemoveLocked(id); }
+
+    private void RemoveLocked(string id)
     {
         foreach (var ext in ExtensionByContentType.Values)
             try { File.Delete(PathFor(id, ext)); } catch { }
@@ -98,7 +109,7 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
 
     private static bool LooksValid(string ext, byte[] b) => ext switch
     {
-        ".png" => b.Length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47,
+        ".png" => b.Length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47 && b[4] == 0x0D && b[5] == 0x0A && b[6] == 0x1A && b[7] == 0x0A,
         ".webp" => b.Length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P',
         ".svg" => LooksLikeSvg(b),
         _ => false,
