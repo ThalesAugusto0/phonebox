@@ -20,6 +20,9 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
 
     private readonly string _dir = iconsDir ?? Path.Combine(AppPaths.ConfigDir, "icons");
 
+    /// <summary>Whether a custom icon was uploaded for a shortcut, without reading it.</summary>
+    public bool Exists(string id) => ExtensionByContentType.Values.Any(ext => File.Exists(PathFor(id, ext)));
+
     /// <summary>The uploaded icon for a shortcut and its content type, or null when none was uploaded.</summary>
     public (byte[] Bytes, string ContentType)? Read(string id)
     {

@@ -18,6 +18,14 @@ public sealed class ShortcutIconUploadsTests : IDisposable
     [Fact]
     public void NothingUploadedReadsAsNull() => Assert.Null(_uploads.Read("terminal"));
 
+    [Fact]
+    public void ExistsAgreesWithRead()
+    {
+        Assert.False(_uploads.Exists("terminal"));
+        Assert.Null(_uploads.Save("terminal", "image/png", Png));
+        Assert.True(_uploads.Exists("terminal"));
+    }
+
     [Theory]
     [InlineData("image/png")]
     [InlineData("image/webp")]
