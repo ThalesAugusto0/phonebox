@@ -35,8 +35,16 @@ internal static class ShortcutIcons
         if (CachedResolvePath(sc.Cmd) is not { } path) return null;
         // A plain write time can repeat under heavy load (Windows file timestamps tick in ~15ms steps); folding in
         // the path and size as well means only an actual reinstall (new bytes, almost never the same size) changes
-        // this, and a program that merely gets touched without changing does not spuriously change it.
-        try { return HashCode.Combine(path, new FileInfo(path).Length, File.GetLastWriteTimeUtc(path).Ticks); } catch { return null; }
+        // this, and a program that merely gets touched without changing does not spuriously change it. A macOS
+        // .app is a directory (FileInfo.Length throws on one), so size only applies to a real file.
+        try
+        {
+            var isBundle = Directory.Exists(path);
+            var writeTime = isBundle ? Directory.GetLastWriteTimeUtc(path) : File.GetLastWriteTimeUtc(path);
+            var size = isBundle ? 0L : new FileInfo(path).Length;
+            return HashCode.Combine(path, size, writeTime.Ticks);
+        }
+        catch { return null; }
     }
 
     public static void ClearHasIconCache() => ResolvedPathCache.Clear();

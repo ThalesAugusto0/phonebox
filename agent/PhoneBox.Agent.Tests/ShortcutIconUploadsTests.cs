@@ -112,13 +112,13 @@ public sealed class ShortcutIconUploadsTests : IDisposable
     {
         _uploads.Save("keep-me", "image/png", Png);
         _uploads.Save("drop-me", "image/png", Png);
-        _uploads.Cleanup(["keep-me"]);
+        _uploads.Cleanup(() => ["keep-me"]);
         Assert.NotNull(_uploads.Read("keep-me"));
         Assert.Null(_uploads.Read("drop-me"));
     }
 
     [Fact]
-    public void CleanupOnAFolderThatWasNeverCreatedDoesNothing() => new ShortcutIconUploads(Path.Combine(_dir, "never-created")).Cleanup(["anything"]);
+    public void CleanupOnAFolderThatWasNeverCreatedDoesNothing() => new ShortcutIconUploads(Path.Combine(_dir, "never-created")).Cleanup(() => ["anything"]);
 
     [Fact]
     public void AnIdWithPathCharactersCannotEscapeTheIconsFolder()

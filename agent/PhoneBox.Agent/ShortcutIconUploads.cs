@@ -108,12 +108,14 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
     }
 
     /// <summary>Deletes uploads for shortcuts that no longer exist (deleted, or never saved past "New shortcut").</summary>
-    public void Cleanup(IEnumerable<string> liveIds)
+    public void Cleanup(Func<IEnumerable<string>> liveIds)
     {
         if (!Directory.Exists(_dir)) return;
-        var keep = new HashSet<string>(liveIds, StringComparer.Ordinal);
         lock (_gate)
         {
+            // Read inside the lock, not before it: a shortcut added and its icon uploaded between an outdated
+            // snapshot and this lock would otherwise look dead to a save that started before either of them.
+            var keep = new HashSet<string>(liveIds(), StringComparer.Ordinal);
             try
             {
                 foreach (var file in Directory.EnumerateFiles(_dir))
