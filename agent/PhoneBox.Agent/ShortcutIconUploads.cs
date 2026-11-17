@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace PhoneBox.Agent;
@@ -21,20 +22,27 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
     private readonly string _dir = iconsDir ?? Path.Combine(AppPaths.ConfigDir, "icons");
     private readonly Lock _gate = new();
 
+    // A file's own last-write time is not reliable for this: on Windows it can tick in steps of ~15ms, so two
+    // uploads in close succession (replacing an icon right after uploading it) can land on the same value. Keyed
+    // by id, filled from the bytes already in memory on Save (no extra read), evicted by Remove; Revision() fills
+    // it lazily for an icon that was already on disk when this process started.
+    private readonly Dictionary<string, long> _revisionCache = [];
+
     /// <summary>Whether a custom icon was uploaded for a shortcut, without reading it.</summary>
     public bool Exists(string id) => ExtensionByContentType.Values.Any(ext => File.Exists(PathFor(id, ext)));
 
     /// <summary>A value that changes when the uploaded icon is replaced or removed, or null when none was uploaded.</summary>
     public long? Revision(string id)
     {
-        foreach (var ext in ExtensionByContentType.Values)
+        lock (_gate)
         {
-            var path = PathFor(id, ext);
-            if (!File.Exists(path)) continue;
-            try { return File.GetLastWriteTimeUtc(path).Ticks; } catch { return null; }
+            if (_revisionCache.TryGetValue(id, out var cached)) return cached;
+            if (Read(id) is not { } found) return null;
+            return _revisionCache[id] = ContentRevision(found.Bytes);
         }
-        return null;
     }
+
+    private static long ContentRevision(byte[] bytes) => BitConverter.ToInt64(SHA256.HashData(bytes));
 
     /// <summary>The uploaded icon for a shortcut and its content type, or null when none was uploaded.</summary>
     public (byte[] Bytes, string ContentType)? Read(string id)
@@ -85,12 +93,13 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
             File.WriteAllBytes(tmp, bytes);
             RemoveLocked(id);
             File.Move(tmp, target, overwrite: true);
+            _revisionCache[id] = ContentRevision(bytes);
         }
         return null;
     }
 
     /// <summary>Deletes a shortcut's custom icon, in whichever format it was saved.</summary>
-    public void Remove(string id) { lock (_gate) RemoveLocked(id); }
+    public void Remove(string id) { lock (_gate) { RemoveLocked(id); _revisionCache.Remove(id); } }
 
     private void RemoveLocked(string id)
     {
@@ -103,13 +112,23 @@ public sealed class ShortcutIconUploads(string? iconsDir = null)
     {
         if (!Directory.Exists(_dir)) return;
         var keep = new HashSet<string>(liveIds, StringComparer.Ordinal);
-        try
+        lock (_gate)
         {
-            foreach (var file in Directory.EnumerateFiles(_dir))
-                if (!keep.Contains(Path.GetFileNameWithoutExtension(file)))
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(_dir))
+                {
+                    // never an orphaned icon; it is either an upload in progress under Save's lock, or dead
+                    // weight left by a process that crashed mid-write, harmless either way
+                    if (file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
+                    var id = Path.GetFileNameWithoutExtension(file);
+                    if (keep.Contains(id)) continue;
                     try { File.Delete(file); } catch { }
+                    _revisionCache.Remove(id);
+                }
+            }
+            catch { }
         }
-        catch { }
     }
 
     private string PathFor(string id, string ext) => Path.Combine(_dir, SafeName(id) + ext);

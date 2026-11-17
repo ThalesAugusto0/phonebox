@@ -501,16 +501,33 @@ public sealed partial class ConfigStore(string path)
 
         var used = new HashSet<string>();
         c.Shortcuts = (c.Shortcuts ?? []).Where(s => s is not null).ToList(); // "shortcuts": [null] in a hand-written file
+
+        // Pass 1: reserve every explicitly-provided id first. Otherwise a blank-id (brand-new) shortcut processed
+        // earlier in the list than one that explicitly keeps an id could grab that id for itself, since at that
+        // point nothing yet says it is taken — bumping the one that actually owns it to an unrelated id instead.
+        var reserved = new Dictionary<Shortcut, string>();
+        foreach (var s in c.Shortcuts.Where(s => !string.IsNullOrWhiteSpace(s.Id)))
+        {
+            var id = Slug(s.Id);
+            if (id == "") id = "shortcut";
+            var unique = id;
+            for (var i = 2; !used.Add(unique); i++) unique = $"{id}-{i}";
+            reserved[s] = unique;
+        }
+
         foreach (var s in c.Shortcuts)
         {
             s.Label = s.Label?.Trim() ?? "";
             s.Icon = IconText.Repair(s.Icon);
-            var isNew = string.IsNullOrWhiteSpace(s.Id);
-            var id = isNew ? Slug(s.Label) : Slug(s.Id);
-            if (id == "") id = "shortcut";
-            var unique = id;
-            for (var i = 2; (isNew && staleIds?.Contains(unique) == true) || !used.Add(unique); i++) unique = $"{id}-{i}";
-            s.Id = unique;
+            if (reserved.TryGetValue(s, out var keptId)) s.Id = keptId;
+            else
+            {
+                var id = Slug(s.Label);
+                if (id == "") id = "shortcut";
+                var unique = id;
+                for (var i = 2; staleIds?.Contains(unique) == true || !used.Add(unique); i++) unique = $"{id}-{i}";
+                s.Id = unique;
+            }
             if (string.IsNullOrWhiteSpace(s.Args)) s.Args = null;
             if (string.IsNullOrWhiteSpace(s.Cwd)) s.Cwd = null;
             s.Steps = s.Steps?.Where(x => x is not null).Select(x => x.Trim()).Where(x => x.Length > 0).Take(50).ToList();

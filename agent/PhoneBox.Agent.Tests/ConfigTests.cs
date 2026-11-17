@@ -97,6 +97,26 @@ public class ConfigTests
     }
 
     [Fact]
+    public void ABlankIdShortcutListedFirstDoesNotStealAnExplicitIdListedAfterIt()
+    {
+        // Explicit ids are reserved in a first pass before any blank-id shortcut is assigned one, so list order
+        // cannot let a brand-new shortcut take an id another shortcut in the same save explicitly asked to keep.
+        var path = Path.Combine(Path.GetTempPath(), $"phonebox-config-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new ConfigStore(path);
+            Assert.Null(store.Save("""{ "shortcuts": [ { "label": "Terminal", "cmd": "a.exe" } ] }"""));
+            Assert.Equal("terminal", store.Get().Shortcuts.Single().Id);
+
+            Assert.Null(store.Save("""
+                { "shortcuts": [ { "label": "Terminal", "cmd": "new.exe" }, { "id": "terminal-2", "label": "Other", "cmd": "x.exe" } ] }
+                """));
+            Assert.Equal(["terminal-3", "terminal-2"], store.Get().Shortcuts.Select(s => s.Id));
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
     public void LegacyHomePageKeepsItsTilesAndOptions()
     {
         // 0.6.1: a fixed "home" page with options

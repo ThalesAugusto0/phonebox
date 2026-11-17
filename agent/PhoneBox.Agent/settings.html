@@ -2083,13 +2083,19 @@ function customIconField(s) {
   // fetch(), not <img src>: an <img> whose request 404s (most shortcuts have no icon at all) logs a console error;
   // fetch()'s own failure does not, and a plain 404 is not an error here — there may be nothing to show.
   let previewUrl = null;
+  let refreshSeq = 0;
   const refresh = async () => {
+    // guards against two overlapping calls (load, then an upload before it settles): a superseded call must not
+    // revoke the newer call's URL out from under the <img>, or overwrite it with its own (stale) response
+    const mine = ++refreshSeq;
     preview.style.visibility = 'hidden';
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
     try {
       const res = await fetch(`/api/shortcuts/icon?id=${encodeURIComponent(s.id)}&v=${Date.now()}`);
-      if (!res.ok) return;
-      previewUrl = URL.createObjectURL(await res.blob());
+      if (!res.ok || mine !== refreshSeq) return;
+      const blob = await res.blob();
+      if (mine !== refreshSeq) return;
+      previewUrl = URL.createObjectURL(blob);
       preview.src = previewUrl;
     } catch (_) {}
   };

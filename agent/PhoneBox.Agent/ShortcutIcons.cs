@@ -14,10 +14,17 @@ internal static class ShortcutIcons
 {
     // Keyed by command, not shortcut id: resolving a path walks every PATH directory on Windows, so repeating it
     // for every shortcut on every /api/config request is wasteful. A command only changes when the config is
-    // saved, so Program.cs's /api/settings PUT clears this then. Caches the resolved path itself (not just
-    // whether one exists) so HasIcon and Revision share one lookup instead of resolving it twice each.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> ResolvedPathCache = new();
-    private static string? CachedResolvePath(string cmd) => ResolvedPathCache.GetOrAdd(cmd, ResolvePath);
+    // saved, so Program.cs's /api/settings PUT clears this then. Only a successful resolution is cached: if the
+    // command does not currently resolve, the cache must not keep saying so once the program gets installed,
+    // since nothing else would tell it to look again before the next settings save.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> ResolvedPathCache = new();
+    private static string? CachedResolvePath(string cmd)
+    {
+        if (ResolvedPathCache.TryGetValue(cmd, out var cached)) return cached;
+        var resolved = ResolvePath(cmd);
+        if (resolved is not null) ResolvedPathCache[cmd] = resolved;
+        return resolved;
+    }
 
     /// <summary>Cheap check for whether <see cref="Icon"/> is worth asking for, without extracting one.</summary>
     public static bool HasIcon(Shortcut sc) => CachedResolvePath(sc.Cmd) is not null;
@@ -26,7 +33,10 @@ internal static class ShortcutIcons
     public static long? Revision(Shortcut sc)
     {
         if (CachedResolvePath(sc.Cmd) is not { } path) return null;
-        try { return File.GetLastWriteTimeUtc(path).Ticks; } catch { return null; }
+        // A plain write time can repeat under heavy load (Windows file timestamps tick in ~15ms steps); folding in
+        // the path and size as well means only an actual reinstall (new bytes, almost never the same size) changes
+        // this, and a program that merely gets touched without changing does not spuriously change it.
+        try { return HashCode.Combine(path, new FileInfo(path).Length, File.GetLastWriteTimeUtc(path).Ticks); } catch { return null; }
     }
 
     public static void ClearHasIconCache() => ResolvedPathCache.Clear();
