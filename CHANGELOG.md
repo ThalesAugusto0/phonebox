@@ -7,6 +7,8 @@
   example a song's cover when its tab closes while the cover loads); the widgets already handle those. It still
   reports the panel's own scripts and styles, and a tap puts it away (#200,
   [Muhammadrizo04](https://github.com/Muhammadrizo04)).
+- Discord widget: server tiles drop their border/background card, showing just the icon, name and channel count, so
+  more servers fit per row.
 
 ## 0.9.16 — 2026-11-17
 
