@@ -12,6 +12,9 @@ namespace PhoneBox.Agent;
 /// </summary>
 internal static class ShortcutIcons
 {
+    /// <summary>Cheap check for whether <see cref="Icon"/> is worth asking for, without extracting one.</summary>
+    public static bool HasIcon(Shortcut sc) => ResolvePath(sc.Cmd) is not null;
+
     public static byte[]? Icon(Shortcut sc)
     {
         var path = ResolvePath(sc.Cmd);

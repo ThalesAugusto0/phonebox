@@ -35,4 +35,11 @@ public sealed class ShortcutIconTests
     [Fact]
     public void AMissingProgramHasNoIcon() =>
         Assert.Null(ShortcutIcons.Icon(new Shortcut { Cmd = "this-program-does-not-exist-12345" }));
+
+    [Theory]
+    [InlineData("builtin:lock", false)]
+    [InlineData("https://github.com", false)]
+    [InlineData("this-program-does-not-exist-12345", false)]
+    public void HasIconAgreesWithIcon(string cmd, bool expected) =>
+        Assert.Equal(expected, ShortcutIcons.HasIcon(new Shortcut { Cmd = cmd }));
 }

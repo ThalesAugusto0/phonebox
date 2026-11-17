@@ -49,7 +49,7 @@ public sealed class AgentConfig
     }
 
     /// <summary>The part sent to the phone: commands (shortcut cmd/args/cwd, command widget scripts) are never included.</summary>
-    public object ToPublic(string? deviceId = null) => new
+    public object ToPublic(string? deviceId = null, Func<Shortcut, bool>? shortcutHasIcon = null) => new
     {
         weather = Weather,
         codexBar = CodexBar,
@@ -65,7 +65,7 @@ public sealed class AgentConfig
                 options = StackWidgets.PublicOptions(w),
             }),
         }),
-        shortcuts = Shortcuts.Select(s => new { s.Id, s.Label, s.Icon, s.Color, toggle = s.Toggle || s.Cmd == "builtin:mute" }),
+        shortcuts = Shortcuts.Select(s => new { s.Id, s.Label, s.Icon, s.Color, toggle = s.Toggle || s.Cmd == "builtin:mute", hasIcon = shortcutHasIcon?.Invoke(s) ?? false }),
         // names only (for the Rules widget); what a rule matches on stays here
         rules = Rules.Select(r => new { r.Id, r.Name, r.Enabled, r.When }),
         charge = new { Charge.Enabled, Charge.Min, Charge.Max },
