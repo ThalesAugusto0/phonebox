@@ -743,24 +743,24 @@ body.offline .offline-msg { display: flex; }
 .dc-members { display: flex; flex-wrap: wrap; gap: 5px; }
 .dc-member { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: rgba(88, 101, 242, .22); }
 .dc-member.muted, .dc-member.deaf { background: rgba(255, 255, 255, .07); color: var(--muted); }
-/* server blocks share the free space: few servers grow to fill the page, many wrap into rows and scroll */
-.dc-servers { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); grid-auto-rows: minmax(max-content, 1fr); gap: 8px; overflow-y: auto; align-content: stretch; }
+/* flex-wrap, not grid: an open block's height depends on how many channels wrap, which a grid's pre-sized rows can't track without overlapping the next row */
+.dc-servers { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; overflow-y: auto; }
 .dc-block:not(.open) .dc-server { flex: 1; }
-.dc-block.open { grid-row: span 3; }
-.dc-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.dc-block.open { grid-column: 1 / -1; padding: 6px; border-radius: 12px; background: rgba(88, 101, 242, .08); border: 1px solid rgba(88, 101, 242, .25); }
+/* fixed, not grow/shrink: a sparse last row must not stretch its tiles bigger than a full row's */
+.dc-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 0 0 96px; }
+.dc-block.open { flex: 1 1 100%; max-width: 100%; padding: 6px; border-radius: 12px; background: rgba(88, 101, 242, .08); border: 1px solid rgba(88, 101, 242, .25); }
 .dc-ico { flex: none; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: #5865f2; color: #fff; font-size: 13px; font-weight: 700; }
 .dc-ico img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dc-member .dc-ico { width: 18px; height: 18px; font-size: 10px; }
 .dc-member { display: inline-flex; align-items: center; gap: 5px; }
 .dc-stext { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-.dc-server { display: flex; flex-direction: row; align-items: center; gap: 8px; width: 100%; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .05); color: var(--text); border-radius: 10px; font: inherit; padding: 7px 10px; text-align: left; min-width: 0; }
-.dc-server:not(.open) { flex-direction: column; justify-content: center; text-align: center; gap: 6px; }
+.dc-server { display: flex; flex-direction: row; align-items: center; gap: 8px; width: 100%; background: none; border: none; color: var(--text); font: inherit; padding: 0; text-align: left; min-width: 0; }
+.dc-server:not(.open) { flex-direction: column; justify-content: flex-start; text-align: center; gap: 4px; }
 .dc-server:not(.open) .dc-stext { align-items: center; max-width: 100%; }
-.dc-server .dc-ico { width: clamp(40px, 14vmin, 96px); height: clamp(40px, 14vmin, 96px); font-size: clamp(17px, 6vmin, 40px); }
-.dc-server b { font-size: 14px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dc-server .dc-ico { width: clamp(40px, 14vmin, 72px); height: clamp(40px, 14vmin, 72px); font-size: clamp(17px, 6vmin, 32px); }
+.dc-server b { font-size: 13px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dc-server small { color: var(--muted); font-size: 10px; }
-.dc-server.open { background: transparent; border-color: transparent; padding: 2px 4px; flex: none; }
+.dc-server.open { flex: none; }
 .dc-server.open .dc-ico { width: 28px; height: 28px; font-size: 13px; }
 .dc-server.open { flex-direction: row; }
 .dc-server.here b::before { content: '● '; color: #3ba55d; }
