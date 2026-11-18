@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.WebUtilities;
 using PhoneBox.Agent;
 using Xunit;
@@ -26,6 +27,58 @@ public sealed class SpotifyControlTests
         public void Dispose() => Directory.Delete(DirectoryPath, true);
     }
     private static HttpResponseMessage Json(string json, HttpStatusCode status = HttpStatusCode.OK) => new(status) {Content=new StringContent(json,Encoding.UTF8,"application/json")};
+
+    [Fact]
+    public void TracksCarryTheSmallestUsableCoverFromSpotifysImageServer()
+    {
+        var track = SpotifyControl.TrackOf(JsonNode.Parse("""
+            {"uri":"spotify:track:0000000000000000000001","name":"Song","artists":[{"name":"A"},{"name":"B"}],
+             "album":{"images":[{"url":"https://i.scdn.co/image/big640","width":640},{"url":"https://i.scdn.co/image/mid300","width":300},
+                                {"url":"https://i.scdn.co/image/tiny32","width":32}]},"external_urls":{"spotify":"https://open.spotify.com/x"}}
+            """))!;
+        Assert.Equal("A, B", track["artist"]!.GetValue<string>());
+        Assert.Equal("https://i.scdn.co/image/mid300", track["image"]!.GetValue<string>());
+        Assert.Null(track["external_urls"]); // only id, name, artist and cover reach the phone
+    }
+
+    [Fact]
+    public async Task ThePlayingEpisodeAndQueuedEpisodesAreAskedFor()
+    {
+        using var fixture = new Fixture(manual: true);
+        var asked = new List<string>();
+        using var spotify = fixture.Create(r =>
+        {
+            asked.Add(r.RequestUri!.PathAndQuery);
+            return Task.FromResult(r.RequestUri!.AbsolutePath.EndsWith("/queue")
+                ? Json("""{"queue":[]}""")
+                : Json("""{"is_playing":true,"item":{"uri":"spotify:episode:0000000000000000000002","name":"Ep","show":{"name":"Show"},"images":[]}}"""));
+        });
+        var snap = await spotify.Snapshot(default);
+        Assert.Equal("Ep", snap["current"]!["name"]!.GetValue<string>());
+        Assert.All(asked, path => Assert.Contains("additional_types=track,episode", path));
+    }
+
+    [Fact]
+    public void CoversFromAnyOtherHostAreDropped()
+    {
+        var track = SpotifyControl.TrackOf(JsonNode.Parse("""
+            {"uri":"spotify:track:0000000000000000000001","name":"Song","artists":[],
+             "album":{"images":[{"url":"https://evil.example/i.scdn.co/image/x","width":300},{"url":"http://i.scdn.co/image/abc","width":300},
+                                {"url":"https://i.scdn.co/image/abc?x=1","width":300}]}}
+            """))!;
+        Assert.Null(track["image"]);
+    }
+
+    [Fact]
+    public void EpisodesUseTheShowNameAndTheirOwnImages()
+    {
+        var episode = SpotifyControl.TrackOf(JsonNode.Parse("""
+            {"uri":"spotify:episode:0000000000000000000002","name":"Ep 1","show":{"name":"The Show"},
+             "images":[{"url":"https://i.scdn.co/image/ep64","width":64}]}
+            """))!;
+        Assert.Equal("The Show", episode["artist"]!.GetValue<string>());
+        Assert.Equal("https://i.scdn.co/image/ep64", episode["image"]!.GetValue<string>());
+    }
 
     [Fact]
     public async Task PkceUsesSingleUseStateAndDoesNotWriteTokensIntoSettings()

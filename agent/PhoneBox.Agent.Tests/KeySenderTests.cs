@@ -18,6 +18,14 @@ public class KeySenderTests
     public void RejectsBadSpecs(string spec) => Assert.Throws<ArgumentException>(() => KeySender.Parse(spec));
 
     [Fact]
+    public void BracketsAreKeys() // Photoshop's brush size
+    {
+        Assert.Equal([["bracketleft"], ["ctrl", "bracketright"]], KeySender.Parse("[, ctrl+]"));
+        Assert.Equal(0xDB, KeySender.WinVk("bracketleft"));
+        Assert.Equal(0xDD, KeySender.WinVk("bracketright"));
+    }
+
+    [Fact]
     public void ModifiersAloneAreAllowed() => Assert.Equal([["win"]], KeySender.Parse("Win"));
 
     // #98: the generic VK_SHIFT/VK_CONTROL/VK_MENU left raw-input apps (Discord) guessing which side was pressed

@@ -30,6 +30,16 @@ for (const viewport of [{ width: 780, height: 360 }, { width: 360, height: 780 }
   });
 }
 
+test('a stack with rotation interval 0 changes only when swiped (#171)', async ({ page }) => {
+  await page.clock.install();
+  await layout(page, [widget('stack', { interval: 0, widgets: [{ type: 'clock' }, { type: 'weather' }] })]);
+  await expect(page.locator('.stack-item.active .w-clock')).toHaveCount(1);
+  await page.clock.runFor(5 * 60_000);
+  await expect(page.locator('.stack-item.active .w-clock')).toHaveCount(1);
+  await page.getByRole('button', { name: 'weather', exact: true }).click();
+  await expect(page.locator('.stack-item.active .w-weather')).toHaveCount(1);
+});
+
 test('stack rotates with the panel clock and an empty stack stays empty', async ({ page }) => {
   await page.clock.install();
   await layout(page, [widget('stack', { interval: 3, widgets: [{ type: 'clock' }, { type: 'weather' }] })]);
@@ -275,6 +285,26 @@ test('settings Display Time format select saves false, true and auto', async ({ 
   await expect(sel).toHaveValue('auto');
 });
 
+// The feeds, cameras, console, Discord and ping editors (and each control action's "enabled") fill in their defaults
+// while they render. The unsaved-changes baseline used to be taken before that, so a page that had just loaded already
+// offered Save, and Revert could never get back to a clean state.
+test('a freshly loaded settings page has nothing to save, and Revert gets back to that', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.goto('/settings/#general');
+  // the Advanced JSON box is empty in the markup and filled by the changed() at the end of load(): from here on the
+  // config is rendered, the form handlers are bound and the baseline is taken (both buttons start disabled anyway)
+  await expect(page.locator('#json')).toHaveValue(/"pages"/);
+  await expect(page.locator('#save')).toBeDisabled();
+  await expect(page.locator('#revert')).toBeDisabled();
+
+  await page.locator('input[data-bind="night.brightness"]').fill('0.1');
+  await expect(page.locator('#save')).toBeEnabled();
+  await page.locator('#revert').click();
+  await expect(page.locator('#save')).toBeDisabled();
+  await expect(page.locator('#revert')).toBeDisabled();
+  await expect(page.locator('#nbv')).toHaveText('2%');
+});
+
 test('multi option preserves saved unlisted quota provider IDs when toggling choices', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
   await layout(page, [widget('quotas', { providers: ['claude', 'alibaba'] })]);
@@ -510,6 +540,54 @@ test('news feeds list headlines and open one on the PC by its id', async ({ page
   await expect(page.locator('.w-feeds .empty')).toHaveText('No headlines from "nothing like this"');
 });
 
+// #108: the list scrolls (and keeps its place when the ages refresh), an opened article loses its accent bar on
+// this phone, and a headline can take two or three lines.
+test('news feeds scroll, mark opened articles and wrap headlines', async ({ page }) => {
+  await layout(page, [{ ...widget('feeds', { title: 'News', open: true }), h: 2 }]);
+  const list = page.locator('.w-feeds .fd-list');
+  await expect(page.locator('.w-feeds .fd-i')).toHaveCount(6);
+  // more headlines than fit: the list scrolls instead of dropping them
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const bottom = await list.evaluate((el) => el.scrollTop);
+  expect(bottom).toBeGreaterThan(0);
+
+  // every headline starts with the accent bar; opening one takes it away, and the list stays where it was scrolled
+  await expect(page.locator('.w-feeds .fd-i.link.read')).toHaveCount(0);
+  await page.locator('.w-feeds .fd-i').last().click();
+  await expect(page.locator('#toast')).toContainText('Opening on the PC');
+  await expect(page.locator('.w-feeds .fd-i').last()).toHaveClass(/\bread\b/);
+  await expect(page.locator('.w-feeds .fd-i.read')).toHaveCount(1);
+  expect(await page.locator('.w-feeds .fd-i').last().evaluate((el) => getComputedStyle(el).borderLeftColor)).toBe('rgba(0, 0, 0, 0)');
+  expect(await list.evaluate((el) => el.scrollTop)).toBe(bottom);
+
+  // it stays read after the panel reloads (kept on the phone)
+  await page.reload();
+  await expect(page.locator('.w-feeds .fd-i').last()).toHaveClass(/\bread\b/);
+
+  // in a Smart Stack, a vertical swipe over a list that scrolls scrolls it rather than changing the card
+  await layout(page, [{ ...widget('stack', { widgets: [{ type: 'feeds', options: { title: 'News' } }, { type: 'clock' }] }), h: 2 }]);
+  await expect(page.locator('.stack-item.active .w-feeds .fd-i')).toHaveCount(6);
+  await page.locator('.stack-item.active .fd-list').evaluate((el) => {
+    const mk = (type, x, y) => {
+      const e = new Event(type, { bubbles: true, cancelable: true });
+      const touch = { clientX: x, clientY: y };
+      e.touches = type === 'touchstart' ? [touch] : [];
+      e.changedTouches = [touch];
+      return e;
+    };
+    el.firstElementChild.dispatchEvent(mk('touchstart', 100, 200));
+    el.firstElementChild.dispatchEvent(mk('touchend', 100, 100));
+  });
+  await expect(page.locator('.stack-item.active .w-feeds')).toHaveCount(1);
+
+  // headlines over two lines
+  await layout(page, [widget('feeds', { title: 'News', lines: '2' })]);
+  const title = page.locator('.w-feeds .fd-t').first();
+  await expect(page.locator('.w-feeds .fd-list.wrap')).toHaveCount(1);
+  expect(await title.evaluate((el) => [getComputedStyle(el).whiteSpace, getComputedStyle(el).webkitLineClamp])).toEqual(['normal', '2']);
+});
+
 // Each News feeds widget follows its own "open" option, and the demo, like the agent, ignores disabled pages.
 test('news feeds open only from a widget whose own option allows it', async ({ page }) => {
   await layout(page, [
@@ -531,4 +609,33 @@ test('news feeds open only from a widget whose own option allows it', async ({ p
   await page.reload();
   const canOpen = await page.evaluate(() => fetch('/agent/api/feeds').then((r) => r.json()).then((j) => j.canOpen));
   expect(canOpen).toBe(false);
+});
+
+// Photo frame: ids from the agent, one photo at a time fetched by id, crossfading; the clock drives the interval.
+test('photo frame shows the folder photos one after another', async ({ page }) => {
+  await page.clock.install();
+  await layout(page, [widget('photos', { interval: 10, shuffle: false, fit: 'contain' })]);
+  const shown = page.locator('.w-photos .pf-img.on');
+  await expect(shown).toHaveCount(1);
+  const first = await shown.getAttribute('src');
+  expect(first).toMatch(/^blob:/);
+  await expect(shown).toHaveCSS('object-fit', 'contain');
+  await page.clock.fastForward(11_000);
+  await expect.poll(() => page.locator('.w-photos .pf-img.on').getAttribute('src')).not.toBe(first);
+  await expect(page.locator('.w-photos .pf-img.on')).toHaveCount(1);
+  await expect(page.locator('.w-photos .pf-note')).toBeHidden();
+});
+
+test('a photo frame on a hidden Smart Stack card fetches nothing', async ({ page }) => {
+  await page.clock.install();
+  await layout(page, [widget('stack', { interval: 120, widgets: [{ type: 'clock' }, { type: 'photos', options: { interval: 5 } }] })]);
+  await page.evaluate(() => {
+    window.__photoFetches = 0;
+    const demo = window.fetch;
+    window.fetch = (url, init) => { if (String(url).includes('/photos')) window.__photoFetches++; return demo(url, init); };
+  });
+  await page.clock.fastForward(30_000);
+  expect(await page.evaluate(() => window.__photoFetches)).toBe(0);
+  await page.getByRole('button', { name: 'photos', exact: true }).click();
+  await expect(page.locator('.stack-item.active .w-photos .pf-img.on')).toHaveCount(1);
 });

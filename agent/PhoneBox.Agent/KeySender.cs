@@ -45,6 +45,8 @@ public static class KeySender
         "next" => "nexttrack",
         "prev" or "previous" => "prevtrack",
         "volup" => "volumeup",
+        "[" or "openbracket" => "bracketleft",
+        "]" or "closebracket" => "bracketright",
         "voldown" => "volumedown",
         var x => x,
     };
@@ -61,6 +63,7 @@ public static class KeySender
         ["up"] = (0x26, "Up", 126), ["down"] = (0x28, "Down", 125), ["left"] = (0x25, "Left", 123), ["right"] = (0x27, "Right", 124),
         ["printscreen"] = (0x2C, "Print", 105), ["minus"] = (0xBD, "minus", 27), ["equals"] = (0xBB, "equal", 24),
         ["comma"] = (0xBC, "comma", 43), ["period"] = (0xBE, "period", 47), ["slash"] = (0xBF, "slash", 44), ["semicolon"] = (0xBA, "semicolon", 41),
+        ["bracketleft"] = (0xDB, "bracketleft", 33), ["bracketright"] = (0xDD, "bracketright", 30),
         ["playpause"] = (0xB3, "XF86AudioPlay", -1), ["nexttrack"] = (0xB0, "XF86AudioNext", -1), ["prevtrack"] = (0xB1, "XF86AudioPrev", -1),
         ["mute"] = (0xAD, "XF86AudioMute", -1), ["volumeup"] = (0xAF, "XF86AudioRaiseVolume", -1), ["volumedown"] = (0xAE, "XF86AudioLowerVolume", -1),
     };
@@ -88,16 +91,29 @@ public static class KeySender
     };
 
 #if WINDOWS
-    private static void Send(List<string> combo)
+    private static void Send(List<string> combo) => SendCombo(combo);
+
+    /// <summary>
+    /// A mouse "move" of zero pixels: nothing on screen changes, but this process becomes the one that received the last
+    /// input, which Windows requires before it lets a process bring a window to the front.
+    /// </summary>
+    internal static bool NudgeInput() =>
+        SendInput(1, [new INPUT { type = 0 /* MOUSE */, u = new InputUnion { mi = new MOUSEINPUT { dwFlags = 1 /* MOVE, by 0 */ } } }], Marshal.SizeOf<INPUT>()) == 1;
+
+    /// <summary>Presses one parsed combo; false when Windows took none or only part of the input.</summary>
+    public static bool SendCombo(List<string> combo)
     {
         var vks = combo.Select(WinVk).ToList();
         var inputs = new List<INPUT>();
         foreach (var vk in vks) inputs.Add(Key(vk, false));
         foreach (var vk in Enumerable.Reverse(vks)) inputs.Add(Key(vk, true));
-        SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+        return SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>()) == inputs.Count;
     }
 
-    public static void TypeText(string text)
+    public static void TypeText(string text) => TryTypeText(text, CancellationToken.None);
+
+    /// <summary>Types the text; false when Windows took none or only part of the input (SendInput doesn't wait).</summary>
+    public static bool TryTypeText(string text, CancellationToken ct)
     {
         var inputs = new List<INPUT>();
         foreach (var ch in text.Replace("\r\n", "\n"))
@@ -106,7 +122,7 @@ public static class KeySender
             inputs.Add(Unicode(ch, false));
             inputs.Add(Unicode(ch, true));
         }
-        SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+        return SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>()) == inputs.Count;
     }
 
     // arrows, Home/End, Insert/Delete, PageUp/PageDown and the right-hand keys need the "extended" flag
@@ -139,9 +155,12 @@ public static class KeySender
     [StructLayout(LayoutKind.Sequential)] private struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public nint dwExtraInfo; }
     [StructLayout(LayoutKind.Sequential)] private struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public nint dwExtraInfo; }
 #else
-    private static void Send(List<string> combo)
+    /// <summary>Presses one parsed combo; false when xdotool or wtype failed (macOS throws when it refuses).</summary>
+    public static bool SendCombo(List<string> combo) => Send(combo);
+
+    private static bool Send(List<string> combo)
     {
-        if (OperatingSystem.IsMacOS()) { MacKeystroke(combo); return; }
+        if (OperatingSystem.IsMacOS()) { MacKeystroke(combo); return true; }
         // X11: xdotool; Wayland: wtype
         var x = string.Join("+", combo.Select(k => k switch
         {
@@ -150,7 +169,7 @@ public static class KeySender
             _ when k[0] == 'f' && k.Length > 1 => k.ToUpperInvariant(),
             _ => k,
         }));
-        if (Sh.Which("xdotool") is not null && Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is null) { Sh.Run("xdotool", "key", "--clearmodifiers", x); return; }
+        if (Sh.Which("xdotool") is not null && Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is null) return Sh.Run("xdotool", "key", "--clearmodifiers", x) is not null;
         if (Sh.Which("wtype") is not null)
         {
             var args = new List<string>();
@@ -159,19 +178,39 @@ public static class KeySender
             var key = combo.FirstOrDefault(k => !Modifiers.Contains(k));
             if (key is not null) args.AddRange(["-k", Special.TryGetValue(key, out var s) ? s.X : key]);
             foreach (var m in Enumerable.Reverse(mods)) args.AddRange(["-m", m]);
-            Sh.Run("wtype", [.. args]);
-            return;
+            return Sh.Run("wtype", [.. args]) is not null;
         }
-        if (Sh.Which("xdotool") is not null) { Sh.Run("xdotool", "key", "--clearmodifiers", x); return; }
+        if (Sh.Which("xdotool") is not null) return Sh.Run("xdotool", "key", "--clearmodifiers", x) is not null;
         throw new InvalidOperationException("sending keys needs xdotool (X11) or wtype (Wayland)");
     }
 
-    public static void TypeText(string text)
+    public static void TypeText(string text) => TryTypeText(text, CancellationToken.None);
+
+    /// <summary>
+    /// Types the text; false when the tool failed (macOS throws when it refuses). The tool gets time for the whole text
+    /// (xdotool types a character every 8 ms) and is killed when <paramref name="ct"/> is cancelled.
+    /// </summary>
+    public static bool TryTypeText(string text, CancellationToken ct)
     {
-        if (OperatingSystem.IsMacOS()) { Osa($"tell application \"System Events\" to keystroke \"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\""); return; }
-        if (Sh.Which("xdotool") is not null && Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is null) { Sh.Run("xdotool", "type", "--delay", "8", "--", text); return; }
-        if (Sh.Which("wtype") is not null) { Sh.Run("wtype", "--", text); return; }
-        if (Sh.Which("xdotool") is not null) { Sh.Run("xdotool", "type", "--delay", "8", "--", text); return; }
+        var timeout = TimeSpan.FromMilliseconds(3000 + 20L * text.Length);
+        bool Run(string tool, params string[] args)
+        {
+            var path = Sh.Which(tool);
+            if (path is null) return false;
+            var psi = new System.Diagnostics.ProcessStartInfo(path);
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            try { return ToolProcess.RunAsync(psi, timeout, ct).GetAwaiter().GetResult().ExitCode == 0; }
+            catch (TimeoutException) { return false; }
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            if (!Run("osascript", "-e", $"tell application \"System Events\" to keystroke \"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\""))
+                throw new InvalidOperationException("macOS refused: allow PhoneBoxAgent in System Settings › Privacy & Security › Accessibility");
+            return true;
+        }
+        if (Sh.Which("xdotool") is not null && Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is null) return Run("xdotool", "type", "--delay", "8", "--", text);
+        if (Sh.Which("wtype") is not null) return Run("wtype", "--", text);
+        if (Sh.Which("xdotool") is not null) return Run("xdotool", "type", "--delay", "8", "--", text);
         throw new InvalidOperationException("typing needs xdotool (X11) or wtype (Wayland)");
     }
 

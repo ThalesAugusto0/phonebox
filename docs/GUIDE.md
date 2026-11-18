@@ -76,16 +76,24 @@ keeps the screen on.
 |---|---|
 | **Time** | Clock (with status line and weather) · Analog clock (any time zone) · **Word clock** · World clocks · Calendar · **Next up** · Time progress (day / week / month / year) · Countdown · Pomodoro · Quick timer · Stopwatch |
 | **Weather & sky** | Weather · Forecast (hourly / 7 days) · Sun & moon (daylight left, UV, moon phase) · **Moon** · Air quality (European AQI, PM2.5, PM10, O₃, NO₂) |
-| **Computer** | **Rules** (which hold, pause) · **Battery care** · On air (microphone / camera / OBS) · OBS Studio (live, recording, scenes) · Device batteries (headphones, mice, keyboards) · Docker / Podman (containers, start / stop) · Metric tile · Gauge · Chart · GPU details · Memory & disks · Top processes · Processes · Now playing · Radio · Volume · Shortcut grid · Big button · **Command** (PowerShell / bash / zsh output, refreshed every N seconds) |
+| **Computer** | **Rules** (which hold, pause) · **Battery care** · On air (microphone / camera / OBS) · OBS Studio (live, recording, scenes) · **Dictation** (speak on the phone, typed on the PC; the app asks for the microphone on first use) · **App console** (Windows: keys and a dial for the app in front, set per app in Settings › General; use the focused app's process name from Task Manager's Details tab; packaged Store apps can all show up as `ApplicationFrameHost` and terminal tabs as `WindowsTerminal`, so a profile for those names covers all of them) · Device batteries (headphones, mice, keyboards) · Docker / Podman (containers, start / stop) · Metric tile · Gauge · Chart · GPU details · Memory & disks · Top processes · Processes · Now playing · Radio · Volume · **Spectrum bars** (Windows: a live spectrum of what the PC is playing, like the classic LED bar visualizers) · Shortcut grid · Big button · **Command** (PowerShell / bash / zsh output, refreshed every N seconds) |
 | **AI & code** | AI quotas · Quota ring · AI sessions · GitHub |
-| **Personal** | **Agenda** (Google / Outlook / iCloud calendars) · Note · Checklist (resets daily) · Counter · Breathe · Quote · Title · Phone battery · **Computers** (switch between paired computers) |
-| **Web & data** | **Custom HTML** (your own widget, sandboxed) · **Home Assistant** (entities, tap to switch) · **Pushed value** · **Notifications** (both fed by [webhooks](#webhooks)) · **News feeds** (your RSS and Atom feeds; with its "Open articles on the PC" option, a tap opens the article on the PC) · Hacker News · Exchange rates (ECB) · Crypto prices · Image / webcam |
+| **Personal** | **Agenda** (Google / Outlook / iCloud calendars) · Note (edit it from the phone) · Checklist (resets daily) · Counter · Breathe · Quote · Title · Phone battery · **Computers** (switch between paired computers) · **Photo frame** (a slideshow from a photo folder on the PC) |
+| **Web & data** | **Custom HTML** (your own widget, sandboxed) · **Home Assistant** (entities with their own name and icon, tap to switch) · **Pushed value** · **Notifications** (both fed by [webhooks](#webhooks)) · **News feeds** (your RSS and Atom feeds; with its "Open articles on the PC" option, a tap opens the article on the PC) · Hacker News · Exchange rates (ECB) · Crypto prices · Image / webcam · **Camera** (a live picture from an IP camera over RTSP, pulled by ffmpeg on the PC) |
 
 Widgets scale to the size you give them. Weather, air quality, rates, crypto and Hacker News come straight from free
 public APIs ([Open-Meteo](https://open-meteo.com), [Frankfurter](https://frankfurter.dev), [CoinGecko](https://www.coingecko.com),
 [HN](https://github.com/HackerNews/API)) on the phone, without API keys, and keep their last data when offline.
 If the phone has no internet, these five supported HTTPS feeds can fall back through the agent over USB.
 The feed proxy is not available over Wi-Fi. See [PRIVACY.md](../PRIVACY.md) for the services contacted.
+
+**Camera** shows an IP camera that streams over RTSP. Add it in **Settings › General › Cameras** with a name and its
+RTSP address (`rtsp://user:password@192.168.1.20:554/…`; the camera's manual or app has the exact path), then pick it
+in the widget. The agent pulls the stream with [ffmpeg](https://ffmpeg.org), which you install: `winget install
+Gyan.FFmpeg` on Windows, `brew install ffmpeg` on macOS, your distribution's `ffmpeg` package on Linux. Restart
+PhoneBox afterwards so it finds ffmpeg in PATH, or enter ffmpeg's full path in the same card. A camera runs only while
+a Camera widget for it is on the phone's screen, at 5 frames a second by default; pick 1 to 10 next to the camera (smoother costs more CPU on the PC and more data to the phone), and expect a short delay. Choose
+**UDP** for a camera that doesn't stream over TCP. At most 4 cameras play at the same time.
 
 **Smart Stack** combines up to 12 widgets in one slot. Add it from the Layout category, then drag widgets into it or
 use its picker. Reorder cards, open their settings, or disable individual cards. Tap the dots or swipe vertically to
@@ -100,13 +108,15 @@ provide defaults; a widget's own options override them, including an empty provi
 Install a compatible CLI from [CodexBar](https://github.com/steipete/CodexBar) if available for your system.
 PhoneBox uses native local sources when no compatible CLI is installed.
 
-**Native Antigravity quotas** use a running app/hub's advertised HTTP port and CSRF token, or a signed-in
+**Native Antigravity quotas** use a running app/hub's advertised HTTP port and CSRF token, the HTTPS port of newer
+IDE servers (2.32 picks it at start-up, so the agent tries the loopback ports that server process listens
+on and accepts its self-signed certificate only for loopback addresses), or a signed-in
 `agy` CLI (1.1.11 or later). The CLI fallback runs `agy -p /usage --output-format json`, without a model prompt,
 and also finds the standard Windows installation in `%LOCALAPPDATA%\agy\bin`. Run `agy` in your terminal to sign
 in if needed. The agent reads measured session and weekly buckets, plus the plan when the local server provides it;
 CLI reports without plan metadata keep the neutral Antigravity title. Older IDE servers can supply model quotas
 through `GetUserStatus`; unavailable measurements are skipped, and weekly limits are never invented. Refresh
-failures retain the last measurements with an error. HTTPS-only endpoints without a compatible CLI can use CodexBar.
+failures retain the last measurements with an error.
 
 Tap an AI session to see its model, timing and token details. Token counters describe the local session rather than
 the account allowance. Prompt/response text and tool arguments are not included in this panel data.
@@ -219,7 +229,8 @@ AI in 3…"*, tap **Stay** to keep the page or **Go now**), waits while you are 
 between two automatic switches and lets the higher-priority rule go first; rules that end before their turn are
 dropped, so a burst of rules never bounces the screen back and forth. Settings › General › Page switching sets the
 countdown, how long to wait after a touch, the minimum time between switches, the home page and how long a rule may
-keep its page. The phone's overview (and the Rules widget) pauses all rules for an hour.
+keep its page (30 minutes by default, so a rule that never ends can't hold the panel for good; 0 keeps it for as long
+as the rule lasts). The phone's overview (and the Rules widget) pauses all rules for an hour.
 
 With **only while it lasts**, the effect ends with the condition: the phone goes back to the page it was on (unless
 you moved on yourself) and stays on the rule's page instead of returning home when idle; a pushed value is removed

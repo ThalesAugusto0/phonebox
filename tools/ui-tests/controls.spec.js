@@ -71,6 +71,24 @@ test('Spotify queue starts the selected item through an ID-only request',async({
   await expect.poll(()=>page.evaluate(async()=>(await(await fetch('/agent/api/controls/spotify/state')).json()).current.name)).toBe('Paper Lanterns');
 });
 
+// #65's idea: the queue shows what plays now and what comes next, with covers from Spotify's image server only.
+test('Spotify queue shows now playing and up next with covers, and covers can be turned off',async({page})=>{
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
+  const asked=[];
+  await page.route('https://i.scdn.co/**',route=>{asked.push(route.request().url());route.fulfill({contentType:'image/png',body:png});});
+  // covers off first, on a fresh page: no request to Spotify's image server at all
+  await show(page,'media-queue',{covers:false});
+  await expect(page.locator('.sq-item').first()).toBeVisible();
+  await expect(page.locator('.w img')).toHaveCount(0);
+  expect(asked).toEqual([]);
+
+  await show(page,'media-queue');
+  await expect(page.locator('.sq-now .sq-label')).toHaveText('Now playing');
+  await expect(page.locator('.sq-head')).toHaveText('Up next');
+  await expect(page.locator('.sq-now img')).toHaveCount(1);
+  expect(await page.locator('.sq-item img').count()).toBeGreaterThan(0);
+});
+
 test('OBS controls are refused until a widget allows control, as on the agent', async ({page})=>{
   await show(page,'obs-mixer');
   await page.getByRole('button',{name:'Mute Desktop Audio',exact:true}).click();

@@ -681,13 +681,36 @@ integrationWidget('obs-transition', 'OBS transition', 'obs', (root,data,send)=>{
 integrationWidget('obs-camera', 'OBS virtual camera', 'obs', (root,data,send)=>{
   const b=button(data.cameraActive?'Stop virtual camera':'Start virtual camera',()=>send('camera'));b.disabled=!data.cameraAvailable;root.append(b);
 });
-integrationWidget('media-queue', 'Spotify queue', 'spotify/state', (root,data,send)=>{
-  root.append(h('div','deck-track',data.current?.name || 'Nothing playing'));
-  for(const item of data.queue || []) root.append(button(item.name+(item.artist?' · '+item.artist:''),()=>send('play-queued',{id:item.id})));
-  if(!data.queue?.length)root.append(h('div','deck-empty',t('w.queueEmpty')));
+// Spotify's image server only (the agent passes nothing else); the phone loads covers itself while the option is on.
+const SPOTIFY_COVER = /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]+$/;
+integrationWidget('media-queue', 'Spotify queue', 'spotify/state', (root,data,send,o)=>{
+  const cover = (url) => {
+    if (o.covers === false) return null; // no cover column at all: more room for the titles
+    const c = h('span','sq-cover');
+    if (SPOTIFY_COVER.test(url || '')) {
+      const img = h('img'); img.alt = ''; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+      img.onerror = () => img.remove(); img.src = url; c.append(img);
+    }
+    return c;
+  };
+  const text = (name, artist) => h('div','sq-txt', h('div','sq-name',name || ''), artist ? h('div','sq-artist',artist) : null);
+  const cur = data.current;
+  root.classList.add('sq');
+  root.append(h('div','sq-now' + (data.playing ? ' playing' : ''), cover(cur?.image),
+    h('div','sq-txt', h('div','sq-label', t(cur ? 'w.nowPlaying' : 'w.nothingPlaying')),
+      cur ? h('div','sq-name',cur.name || '') : null, cur?.artist ? h('div','sq-artist',cur.artist) : null)));
+  if (!data.queue?.length) { root.append(h('div','deck-empty',t('w.queueEmpty'))); return; }
+  root.append(h('div','sq-head',t('w.upNext')));
+  for (const item of data.queue) {
+    const b = h('button','sq-item', cover(item.image), text(item.name, item.artist));
+    b.type = 'button';
+    b.setAttribute('aria-label', item.name + (item.artist ? ' · ' + item.artist : ''));
+    b.onclick = () => { haptic(); send('play-queued',{id:item.id}).catch(fail); };
+    root.append(b);
+  }
 });
 integrationWidget('media-favorites', 'Spotify favorites', 'spotify/state', (root,data,send)=>{
-  root.append(h('div','deck-track',data.current?.name || 'Nothing playing'),h('div','deck-caption',data.current?.artist || ''));
+  root.append(h('div','deck-track',data.current?.name || t('w.nothingPlaying')),h('div','deck-caption',data.current?.artist || ''));
   const b=button('Save to library',()=>send('favorite'));b.disabled=!data.current?.id;root.append(b);
 });
 W['meeting-timer'] = {needs:['tick'],create(box,{o}){

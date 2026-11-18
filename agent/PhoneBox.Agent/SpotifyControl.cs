@@ -144,12 +144,11 @@ public sealed class SpotifyControl : IDisposable
             if (_snapshot is not null && Now - _readAt < 5000) return _snapshot;
             try
             {
-                var playing = await Request(HttpMethod.Get, "me/player/currently-playing", null, ct);
-                var queue = await Request(HttpMethod.Get, "me/player/queue", null, ct);
-                JsonNode? Track(JsonNode? item) => item is null ? null : new JsonObject { ["id"] = item["uri"]?.DeepClone(),
-                    ["name"] = item["name"]?.DeepClone(), ["artist"] = string.Join(", ", (item["artists"] as JsonArray ?? []).Select(a => a?["name"]?.GetValue<string>() ?? "")) };
-                _snapshot = new() { ["connected"] = true, ["current"] = Track(playing?["item"]), ["playing"] = playing?["is_playing"]?.DeepClone(),
-                    ["queue"] = new JsonArray((queue?["queue"] as JsonArray ?? []).Take(30).Select(Track).ToArray()) };
+                // episodes too: without additional_types an episode that is playing comes back empty
+                var playing = await Request(HttpMethod.Get, "me/player/currently-playing?additional_types=track,episode", null, ct);
+                var queue = await Request(HttpMethod.Get, "me/player/queue?additional_types=track,episode", null, ct);
+                _snapshot = new() { ["connected"] = true, ["current"] = TrackOf(playing?["item"]), ["playing"] = playing?["is_playing"]?.DeepClone(),
+                    ["queue"] = new JsonArray((queue?["queue"] as JsonArray ?? []).Take(30).Select(TrackOf).ToArray()) };
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or OperationCanceledException)
@@ -158,6 +157,28 @@ public sealed class SpotifyControl : IDisposable
         }
         finally { _readGate.Release(); }
     }
+    /// <summary>
+    /// What the phone gets for a track or an episode: its URI (to play it by id), name, artist or show, and a small cover
+    /// from Spotify's own image server, the smallest one at least 64 px wide. Nothing else from Spotify's answer is passed on.
+    /// </summary>
+    internal static JsonObject? TrackOf(JsonNode? item)
+    {
+        if (item is null) return null;
+        var artist = item["artists"] is JsonArray artists
+            ? string.Join(", ", artists.Select(a => a?["name"]?.GetValue<string>() ?? "").Where(n => n.Length > 0))
+            : item["show"]?["name"]?.GetValue<string>() ?? "";
+        var images = (item["album"]?["images"] ?? item["images"]) as JsonArray ?? [];
+        var cover = images
+            .Select(i => (Url: i?["url"]?.GetValue<string>(), Width: i?["width"]?.GetValue<int?>() ?? 0))
+            .Where(i => CoverUrl(i.Url))
+            .OrderBy(i => i.Width >= 64 ? i.Width : int.MaxValue).Select(i => i.Url).FirstOrDefault();
+        return new JsonObject { ["id"] = item["uri"]?.DeepClone(), ["name"] = item["name"]?.DeepClone(), ["artist"] = artist, ["image"] = cover };
+    }
+
+    /// <summary>Only covers on Spotify's image server reach the phone, which loads them itself.</summary>
+    internal static bool CoverUrl(string? url) => url is not null && url.Length <= 200
+        && System.Text.RegularExpressions.Regex.IsMatch(url, @"\Ahttps://i\.scdn\.co/image/[A-Za-z0-9]+\z");
+
     internal static bool PlaybackUri(string value) => System.Text.RegularExpressions.Regex.IsMatch(value,
         @"\Aspotify:(?:track|episode|playlist|album):[A-Za-z0-9]{22}\z");
     public async Task<DeckResult> Act(string action, string? id, CancellationToken ct)

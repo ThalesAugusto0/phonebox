@@ -326,6 +326,7 @@
     Array.from({ length: 13 }, (_, i) => `<line x1="150" y1="170" x2="${-300 + i * 75}" y2="300"/>`).join('') + '</g></svg>');
 
   // ---- router
+  const DEMO_PHOTOS = [['ph1', '#f97316', '#7c3aed'], ['ph2', '#0ea5e9', '#22c55e'], ['ph3', '#ec4899', '#facc15'], ['ph4', '#14b8a6', '#1e3a8a']];
   // headlines as the agent sends them: no links, the phone opens one by its id
   const DEMO_FEEDS = () => [
     ['f1', 'A tiny e-ink weather station that runs for a year on one charge', 'Hackaday', 18],
@@ -335,6 +336,15 @@
     ['f5', 'Ten keyboard shortcuts that save an hour a week', 'Tech news', 240],
     ['f6', 'Inside the factory that still makes film cameras', 'Hackaday', 420],
   ].map(([id, title, source, min]) => ({ id, title, source, published: now() - min * 60_000, openable: true }));
+  // "pageId/widgetId", or "pageId/stackId:cardId" for a Smart Stack card (PanelWidgets.Find)
+  const panelWidget = (c, key, type) => (c.pages || []).filter((p) => p.enabled !== false).flatMap((p) => (p.widgets || []).flatMap((w) =>
+    // card-<i> counts every card, disabled ones too, like StackWidgets.Children and stack.js
+    [[`${p.id}/${w.id}`, w], ...(w.type === 'stack' ? (w.options?.widgets || []).map((x, i) => [x, i]).filter(([x]) => x.enabled !== false)
+      .map(([x, i]) => [`${p.id}/${w.id}:${x.id || `card-${i}`}`, x]) : [])]))
+    .find(([k, w]) => w.type === type && k === key)?.[1];
+  const consoleWidget = (c, key) => panelWidget(c, key, 'app-console');
+  const DEMO_CONSOLE = { id: 'photoshop', label: 'Photoshop', keys: ['Brush', 'Eraser', 'Undo', 'Redo', 'Zoom in', 'Zoom out', 'Fit', 'Save'],
+    dial: { left: true, right: true, press: true } };
   const json = (o, status = 200, headers = {}) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
   const parse = (body) => { if (body == null || body === '') return null; try { return JSON.parse(body); } catch (_) { return String(body); } };
 
@@ -392,7 +402,7 @@
     return true;
   }
   const spotifyId = (i) => 'spotify:track:' + String(i).padStart(22, '0');
-  const spotifyTrack = (i) => ({ id: spotifyId(i), name: TRACKS[i][0], artist: TRACKS[i][1] });
+  const spotifyTrack = (i) => ({ id: spotifyId(i), name: TRACKS[i][0], artist: TRACKS[i][1], image: 'https://i.scdn.co/image/demo' + i });
   const deckSpotify = () => ({ connected: true, current: spotifyTrack(player.track), playing: player.playing,
     queue: TRACKS.map((_, i) => i).filter((i) => i !== player.track).map(spotifyTrack) });
   async function controlCommand(kind, q) {
@@ -496,6 +506,19 @@
     if (path.startsWith('/api/controls/command/') && method === 'POST') return json(await controlCommand(path.split('/').pop(), q));
     if (path === '/api/state') return json(state(q.has('ev') ? +q.get('ev') : null));
     if (path === '/api/config') return json({ version: cfgVersion(), config: publicConfig(await config()) });
+    if (path.startsWith('/api/widget/') && path.endsWith('/note') && method === 'POST') {
+      const parts = path.split('/');
+      const pageId = decodeURIComponent(parts[3]);
+      const widgetId = decodeURIComponent(parts[4]);
+      const c = await config();
+      const pg = (c.pages || []).find((p) => p.id === pageId);
+      const w = pg && (pg.widgets || []).find((x) => x.id === widgetId);
+      if (!w || w.type !== 'note') return json({ error: 'option not allowed' }, 400);
+      w.options = { ...(w.options || {}), text: q.get('text') || '' };
+      store.set('pb-demo-config', c);
+      store.set('pb-demo-version', cfgVersion() + 1);
+      return json({ version: cfgVersion() });
+    }
     if (path === '/api/volume' && method === 'POST') {
       // the agent answers with the new volume state (AudioSnapshot)
       const op = q.get('op'), level = q.has('level') ? +q.get('level') : null;
@@ -545,12 +568,30 @@
       { id: '3f9a1c0d7b2e', model: 'UMIDIGI BISON', lastSeen: now() - 2000, via: 'USB', webView: 'com.google.android.webview/134.0.6998.135', webviewProblem: null, name: null, pages: null },
       { id: 'c81e728d9d4c', model: 'samsung SM-X200', lastSeen: now() - 140000, via: 'Wi-Fi', webView: 'com.google.android.webview/134.0.6998.135', webviewProblem: null, name: null, pages: null },
     ]);
+    if (path === '/api/network/adapters') return json([{ name: 'Ethernet', description: 'Intel(R) Ethernet Controller I225-V', auto: true },
+      { name: 'Wi-Fi', description: 'Intel(R) Wi-Fi 6E AX211 160MHz', auto: true }, { name: 'WireGuard', description: 'WireGuard Tunnel', auto: false }]);
     if (path === '/api/batteries') return json({ devices: [
       { name: 'WH-1000XM5', level: 64, kind: 'headphones', charging: null },
       { name: 'MX Master 3S', level: 85, kind: 'mouse', charging: null },
       { name: 'MX Keys', level: 18, kind: 'keyboard', charging: null },
       { name: 'Xbox Wireless Controller', level: 40, kind: 'controller', charging: null },
     ] });
+    // photo frame: like the agent, ids from an enabled page's widget, then one image by id (generated pictures here)
+    if (path === '/api/photos') { const c = await config(); return json(shownWidgets(c).some((w) => w.type === 'photos') ? { ids: DEMO_PHOTOS.map((p) => p[0]), error: null, scanning: false } : { ids: [], error: 'Add a Photo frame widget to a page to show photos', scanning: false }); }
+    if (path.startsWith('/api/photos/')) {
+      const p = DEMO_PHOTOS.find((x) => x[0] === decodeURIComponent(path.slice(12)));
+      if (!p || !shownWidgets(await config()).some((w) => w.type === 'photos')) return json({ error: 'Unknown photo' }, 404);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="${p[1]}"/><stop offset="1" stop-color="${p[2]}"/></linearGradient></defs><rect width="1600" height="1000" fill="url(#g)"/><circle cx="1220" cy="260" r="120" fill="#fff8" /><path d="M0 820 L420 520 L760 760 L1100 480 L1600 860 V1000 H0Z" fill="#0006"/></svg>`;
+      return new Response(svg, { status: 200, headers: { 'Content-Type': 'image/svg+xml' } });
+    }
+    // spectrum bars: like the agent, frames only for a widget on an enabled page; a made-up beat with a bass kick here
+    if (path === '/api/spectrum') {
+      const shown = shownWidgets(await config()).some((w) => w.type === 'spectrum');
+      const s = Date.now() / 1000, kick = Math.max(0, Math.cos(s * Math.PI * 2 * 2)) ** 6;
+      const b = shown ? Array.from({ length: 48 }, (_, i) => Math.round(Math.max(0, Math.min(100,
+        78 - i * 0.7 + (i < 8 ? kick * 22 : 0) + 14 * Math.sin(s * (2.1 + i * 0.37) + i) + 6 * Math.sin(s * 9.7 + i * 1.3))))) : null;
+      return json({ shown, active: shown, fps: 30, b });
+    }
     if (path === '/api/feeds') { const c = await config(); return json({ items: DEMO_FEEDS(), updated: now(), errors: [], canOpen: feedsCanOpen(c) }); }
     if (path === '/api/feeds/open' && method === 'POST') {
       if (!feedsCanOpen(await config())) return json({ error: 'Opening articles is off: turn on "Open articles on the PC" in the News feeds widget\'s settings' }, 400);
@@ -561,10 +602,42 @@
       if (!widgets(await config()).some((w) => w.type === 'apps')) return json({ error: 'Add an All apps widget to a page to open apps from the phone' }, 400);
       return DEMO_APPS.some((a) => a.id === q.get('id')) ? json({ ok: true }) : json({ error: 'Unknown app' }, 400);
     }
+    // Dictation: the demo PC "types" the text if that widget allows it (Dictation.TypeAsync)
+    // Camera: like CameraFeeds, a picture only for a camera widget on an enabled page with a camera chosen; the demo's
+    // "camera" draws a moving sweep with the time instead of a stream
+    if (path === '/api/camera') {
+      const c = await config();
+      const w = panelWidget(c, q.get('widget'), 'camera');
+      if (!w) return json({ state: 'unknown' }, 404);
+      if (!w.options?.camera || !(c.cameras?.sources || []).some((s) => s.id === w.options.camera)) return json({ state: 'pick' }, 404);
+      const d = new Date(), x = (d.getTime() / 25) % 640;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#1f2937"/><rect y="250" width="640" height="110" fill="#374151"/><rect x="${x.toFixed(0)}" y="0" width="6" height="360" fill="#22d3ee" opacity=".5"/><text x="16" y="34" fill="#fff" font-family="monospace" font-size="22">CAM 1  ${d.toTimeString().slice(0, 8)}</text></svg>`;
+      return new Response(svg, { status: 200, headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' } });
+    }
+    if (path === '/api/dictate' && method === 'POST') {
+      if (panelWidget(await config(), q.get('widget'), 'dictate')?.options?.control !== true)
+        return json({ error: 'typing is off: turn on "Type the text on the computer" in the dictation widget\'s settings' }, 403);
+      const text = String(q.get('text') || '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').trim();
+      return text ? json({ ok: true }) : json({ error: 'nothing to type' }, 400);
+    }
+    // App console: the demo PC always has Photoshop in front; like AppConsole, only enabled pages count
+    if (path === '/api/console') {
+      const w = consoleWidget(await config(), q.get('widget'));
+      if (!w) return json({ error: "this app console widget isn't on an enabled page of this phone" }, 404);
+      return json({ supported: true, control: w.options?.control === true, profile: DEMO_CONSOLE });
+    }
+    if (path.startsWith('/api/console/') && method === 'POST') {
+      if (consoleWidget(await config(), q.get('widget'))?.options?.control !== true)
+        return json({ error: 'sending keys is off: turn on "Send keys to the computer" in the app console widget\'s settings' }, 403);
+      const [, , , profile, slot] = path.split('/');
+      const ok = profile === DEMO_CONSOLE.id && (/^dial-(left|right|press)$/.test(slot) || (/^k(0|[1-9]\d*)$/.test(slot) && +slot.slice(1) < DEMO_CONSOLE.keys.length));
+      return ok ? json({ ok: true }) : json({ error: 'nothing is set for this key' }, 404);
+    }
     if (path.startsWith('/api/obs/') && method === 'POST') {
       if (!allows(await config(), isObs)) return json({ error: "controlling OBS is turned off in the widget's settings" }, 400);
       return obsAct(path.slice(9), q.get('scene')) ? json({ ok: true }) : json({ error: 'unknown action' }, 400);
     }
+    if (path === '/api/ha/entities') return json({ configured: true, error: null, entities: Object.keys(ha).sort().map((id) => ({ id, name: ha[id].name, switchable: /^(light|switch|lock|scene)\./.test(id) })) });
     if (path === '/api/ha/states') return json(haStates((q.get('ids') || '').split(',').filter(Boolean)));
     if (path.startsWith('/api/ha/toggle/') && method === 'POST') { haToggle(decodeURIComponent(path.slice(15))); return json({ ok: true }); }
     if (path.startsWith('/api/docker/') && method === 'POST') {
@@ -689,7 +762,7 @@
   const swapDemoImg = (img) => {
     if (img.tagName !== 'IMG') return;
     const src = img.getAttribute('src') || '';
-    if (/\/api\/(art|controls\/radio-logo)/.test(src)) img.src = ART;
+    if (/\/api\/(art|controls\/radio-logo)|^https:\/\/i\.scdn\.co\/image\/demo\d+$/.test(src)) img.src = ART;
     else if (/\/api\/apps\/icon/.test(src)) img.src = appIcon(new URL(src, location.href).searchParams.get('id'));
   };
   new MutationObserver((list) => {

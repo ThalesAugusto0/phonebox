@@ -6,18 +6,19 @@ const { test, expect } = require('@playwright/test');
 const PAGES = ['one', 'two', 'three', 'four', 'five'].map((id) => ({ id, title: id[0].toUpperCase() + id.slice(1),
   widgets: [{ id: 'n-' + id, type: 'note', x: 0, y: 0, w: 12, h: 6, options: { text: 'Page ' + id } }] }));
 
-async function show(page) {
+async function show(page, display = {}) {
   await page.clock.install();
   await page.goto('/panel/');
-  await page.evaluate((pages) => {
+  await page.evaluate(({ pages, display }) => {
     localStorage.clear();
     localStorage.setItem('pb-demo-config', JSON.stringify({
       night: { enabled: false }, rules: [], shortcuts: [], pages,
-      display: { idleReturnSec: 0, minDwellSec: 0, touchGraceSec: 20, switchCountdownSec: 3 },
+      display: { idleReturnSec: 0, minDwellSec: 0, touchGraceSec: 20, switchCountdownSec: 3, ...display },
     }));
-  }, PAGES);
+  }, { pages: PAGES, display });
   await page.reload();
   await expect(page.locator('#dots i')).toHaveCount(PAGES.length);
+  await expect(page.locator('body')).not.toHaveClass(/night/);
 }
 
 const activeDot = (page) => page.locator('#dots i').evaluateAll((d) => d.findIndex((x) => x.classList.contains('on')));
@@ -75,4 +76,81 @@ test('a notification whose countdown is an object is shown, and the next event s
   expect(await activeDot(page)).toBe(2);
   await emit(page, 'notify', { title: 'Next', text: 'still delivered' });
   await expect(page.locator('#toast')).toContainText('still delivered');
+});
+
+test('page pause button and dots hold block idle return and rule switches with 2s overlay', async ({ page }) => {
+  await show(page, { idleReturnSec: 30 });
+  await page.keyboard.press('ArrowRight');
+  expect(await activeDot(page)).toBe(1);
+
+  const dots = page.locator('#dots');
+  const pauseBtn = page.getByRole('button', { name: 'Pause page switching' });
+  const overlay = page.locator('#pagePauseOverlay');
+
+  await expect(pauseBtn).toHaveAttribute('aria-pressed', 'false');
+  await expect(pauseBtn.locator('.i-pause')).toBeVisible();
+  await expect(pauseBtn.locator('.i-play')).toBeHidden();
+
+  // Long-pressing #dots (outside .page-pause) toggles pause without opening overview and shows the 2s overlay.
+  await dots.locator('i').first().dispatchEvent('pointerdown', { button: 0, pointerType: 'mouse', clientX: 10, clientY: 10 });
+  await step(page, 500);
+  await dots.locator('i').first().dispatchEvent('pointerleave', { button: 0, pointerType: 'mouse', clientX: 10, clientY: 10 });
+
+  await expect(page.locator('#overview')).toBeHidden();
+  await expect(dots).toHaveClass(/\bpaused\b/);
+  await expect(pauseBtn).toHaveAttribute('aria-pressed', 'true');
+  await expect(pauseBtn.locator('.i-play')).toBeVisible();
+  await expect(pauseBtn.locator('.i-pause')).toBeHidden();
+  await expect(overlay).toHaveClass(/\bshow\b/);
+
+  await step(page, 2100);
+  await expect(overlay).not.toHaveClass(/\bshow\b/);
+  await expect(dots).toHaveClass(/\bpaused\b/);
+
+  // Idle return is blocked while paused.
+  await step(page, 60_000);
+  expect(await activeDot(page)).toBe(1);
+
+  // Rule switches are also held while paused and appear in #navChip with the pause reason.
+  await emit(page, 'goto', { page: 'four', rule: 'r1', name: 'Rule 1', hold: true, countdown: 3, priority: 5 });
+  await step(page, 40_000);
+  expect(await activeDot(page)).toBe(1);
+  await expect(page.locator('#navChip')).toHaveClass(/\bon\b/);
+  await expect(page.locator('#ncWhy')).toHaveText('page paused');
+
+  // Tapping .page-pause after a hold that ended with pointerleave still resumes and shows the 2s overlay.
+  await pauseBtn.click();
+  await expect(pauseBtn).toHaveAttribute('aria-pressed', 'false');
+  await expect(dots).not.toHaveClass(/\bpaused\b/);
+  await expect(overlay).toHaveClass(/\bshow\b/);
+
+  await step(page, 2100);
+  await expect(overlay).not.toHaveClass(/\bshow\b/);
+
+  // Once resumed and touchGrace + countdown expire, the queued rule switch executes.
+  await step(page, 30_000);
+  expect(await activeDot(page)).toBe(3);
+});
+
+test('switching to another page automatically clears page pause', async ({ page }) => {
+  await show(page, { idleReturnSec: 30 });
+  await page.keyboard.press('ArrowRight');
+  expect(await activeDot(page)).toBe(1);
+
+  const dots = page.locator('#dots');
+  const pauseBtn = page.getByRole('button', { name: 'Pause page switching' });
+
+  await pauseBtn.click();
+  await expect(pauseBtn).toHaveAttribute('aria-pressed', 'true');
+  await expect(dots).toHaveClass(/\bpaused\b/);
+
+  // Manually navigating to another page clears the pause without requiring another tap.
+  await page.keyboard.press('ArrowRight');
+  expect(await activeDot(page)).toBe(2);
+  await expect(pauseBtn).toHaveAttribute('aria-pressed', 'false');
+  await expect(dots).not.toHaveClass(/\bpaused\b/);
+
+  // Idle return now operates normally and returns to page one after 30 s + countdown.
+  await step(page, 40_000);
+  expect(await activeDot(page)).toBe(0);
 });

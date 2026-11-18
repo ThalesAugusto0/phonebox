@@ -10,7 +10,12 @@ import './widgets/time.js';
 import './widgets/pc.js';
 import './widgets/sky.js';
 import './widgets/web.js';
+import './widgets/photos.js';
 import './widgets/controls.js';
+import './widgets/console.js';
+import './widgets/dictate.js';
+import './widgets/camera.js';
+import './widgets/spectrum.js';
 
 // PhoneBox desk panel. Pages are 12 × 6 grids of widgets, designed in the agent's settings page.
 // The panel talks to the PhoneBox agent through "/agent/*", which the Android shell proxies over USB
@@ -30,7 +35,7 @@ export const $ = (id) => document.getElementById(id);
 // The native bridge (window.Android) is in every frame, sandboxed widgets included, so each call carries a key that only
 // the panel's own frames receive (MainActivity.bridgeKey). This wrapper adds it.
 const BRIDGE = ['battery', 'buzz', 'haptic', 'is24Hour', 'pcs', 'selectPc', 'forgetPc', 'setBrightness', 'setHomeScreen', 'setOrientation',
-  'setPinned', 'setVolumeKeys', 'transport', 'sensors', 'version'];
+  'setPinned', 'setVolumeKeys', 'transport', 'sensors', 'version', 'canListen', 'listen', 'stopListening', 'cancelListening'];
 export const bridge = typeof Android === 'undefined' ? null : Object.fromEntries(BRIDGE.filter((m) => typeof Android[m] === 'function')
   .map((m) => [m, (...args) => Android[m](window.__phoneboxKey || '', ...args)]));
 // Live preview inside the agent's layout editor: the layout comes from the editor (unsaved), not from the agent.
@@ -148,6 +153,33 @@ export function h(tag, cls, ...kids) {
   return e;
 }
 
+/* Interface icons: Lucide (https://lucide.dev), ISC license — a small inline set keeps the
+   panel's chrome consistent across platforms and works fully offline. Icons are decorative
+   (aria-hidden); the controls they sit in carry the accessible names.
+   Lucide licence (ISC): Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT).
+   All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+   Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby
+   granted, provided that the above copyright notice and this permission notice appear in all copies. */
+const ICONS = {
+  x: 'M18 6 6 18M6 6l12 12',
+  hourglass: 'M5 22h14M5 2h14M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2',
+  wifiOff: 'M8.5 16.5a5 5 0 0 1 7 0M2 8.82a15 15 0 0 1 4.17-2.65M10.66 5c4.01-.36 8.14.9 11.34 3.76M16.85 11.25a10 10 0 0 1 2.22 1.68M5 13a10 10 0 0 1 5.24-2.76M12 20h.01M2 2l20 20',
+  warn: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
+  check: 'M20 6 9 17l-5-5',
+  err: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 8v4M12 16h.01',
+  info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01',
+  pause: 'M6 4h4v16H6zM14 4h4v16h-4z',
+  play: 'M6 3l14 9-14 9V3z',
+  mic: 'M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8',
+};
+export function icon(name, cls = '') {
+  const t = document.createElement('template');
+  t.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name] || ''}"/></svg>`;
+  const s = t.content.firstElementChild;
+  s.setAttribute('class', 'ico' + (cls ? ' ' + cls : ''));
+  return s;
+}
+
 export const pad = (n) => String(n).padStart(2, '0');
 // Clock times follow display.hour12: false ("14:05", default), true ("2:05 PM") or "auto" (follow the phone). Pass hours 0-23.
 export function hour12() {
@@ -194,7 +226,9 @@ export const color = (c) => (c && c.startsWith('--') ? cssVar(c) : c);
 export let toastTimer = 0;
 export function toast(msg, kind = '', title = '', seconds = 2.6) {
   const t = $('toast');
-  t.replaceChildren(...(title ? [h('b', null, title), h('span', null, msg)] : [h('span', null, msg)]));
+  const ic = { ok: 'check', err: 'err', warn: 'warn' }[kind] || 'info';
+  const msgSpan = h('span', null, icon(ic, 'm'), msg);
+  t.replaceChildren(...(title ? [h('b', null, title), msgSpan] : [msgSpan]));
   t.className = 'toast on ' + kind;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.className = 'toast ' + kind), Math.max(1, seconds) * 1000);
@@ -343,16 +377,20 @@ export function metricText(m, s) {
 }
 
 // ---------------------------------------------------------------- weather (Open-Meteo, straight from the phone)
+// The condition names are i18n keys: they are translated when the line is drawn, not when this table is built, so a
+// language change applies without reloading the panel.
 export const WX = {
-  0: ['Clear', '☀️', '🌙'], 1: ['Mostly clear', '🌤️', '🌙'], 2: ['Partly cloudy', '⛅', '☁️'], 3: ['Overcast', '☁️', '☁️'],
-  45: ['Fog', '🌫️'], 48: ['Rime fog', '🌫️'],
-  51: ['Light drizzle', '🌦️'], 53: ['Drizzle', '🌦️'], 55: ['Heavy drizzle', '🌧️'], 56: ['Freezing drizzle', '🌧️'], 57: ['Freezing drizzle', '🌧️'],
-  61: ['Light rain', '🌦️'], 63: ['Rain', '🌧️'], 65: ['Heavy rain', '🌧️'], 66: ['Freezing rain', '🌧️'], 67: ['Freezing rain', '🌧️'],
-  71: ['Light snow', '🌨️'], 73: ['Snow', '🌨️'], 75: ['Heavy snow', '❄️'], 77: ['Snow grains', '🌨️'],
-  80: ['Light showers', '🌦️'], 81: ['Showers', '🌧️'], 82: ['Heavy showers', '⛈️'], 85: ['Snow showers', '🌨️'], 86: ['Heavy snow showers', '❄️'],
-  95: ['Thunderstorm', '⛈️'], 96: ['Thunderstorm, hail', '⛈️'], 99: ['Severe hail', '⛈️'],
+  0: ['wx.clear', '☀️', '🌙'], 1: ['wx.mostlyClear', '🌤️', '🌙'], 2: ['wx.partlyCloudy', '⛅', '☁️'], 3: ['wx.overcast', '☁️', '☁️'],
+  45: ['wx.fog', '🌫️'], 48: ['wx.rimeFog', '🌫️'],
+  51: ['wx.lightDrizzle', '🌦️'], 53: ['wx.drizzle', '🌦️'], 55: ['wx.heavyDrizzle', '🌧️'], 56: ['wx.freezingDrizzle', '🌧️'], 57: ['wx.freezingDrizzle', '🌧️'],
+  61: ['wx.lightRain', '🌦️'], 63: ['wx.rain', '🌧️'], 65: ['wx.heavyRain', '🌧️'], 66: ['wx.freezingRain', '🌧️'], 67: ['wx.freezingRain', '🌧️'],
+  71: ['wx.lightSnow', '🌨️'], 73: ['wx.snow', '🌨️'], 75: ['wx.heavySnow', '❄️'], 77: ['wx.snowGrains', '🌨️'],
+  80: ['wx.lightShowers', '🌦️'], 81: ['wx.showers', '🌧️'], 82: ['wx.heavyShowers', '⛈️'], 85: ['wx.snowShowers', '🌨️'], 86: ['wx.heavySnowShowers', '❄️'],
+  95: ['wx.thunderstorm', '⛈️'], 96: ['wx.thunderstormHail', '⛈️'], 99: ['wx.severeHail', '⛈️'],
 };
-export const wxIcon = (code, day = 1) => { const x = WX[code] || ['—', '🌡️']; return day === 0 && x[2] ? x[2] : x[1]; };
+export const wxIcon = (code, day = 1) => { const x = WX[code] || [null, '🌡️']; return day === 0 && x[2] ? x[2] : x[1]; };
+/** The condition in the panel's language, or an em dash for a code Open-Meteo does not list. */
+export const wxText = (code) => { const x = WX[code]; return x ? t(x[0]) : '—'; };
 
 let weatherRetry = 0;
 let weatherFor = ''; // the location the forecast in D.weather belongs to
@@ -396,14 +434,14 @@ export function wxLines() {
   const w = D.weather;
   if (!w || !w.current) return null;
   const c = w.current, d = w.daily || {};
-  const desc = (WX[c.weather_code] || ['—'])[0];
+  const desc = wxText(c.weather_code);
   const hi = d.temperature_2m_max ? Math.round(d.temperature_2m_max[0]) : null;
   const lo = d.temperature_2m_min ? Math.round(d.temperature_2m_min[0]) : null;
   return {
     icon: wxIcon(c.weather_code, c.is_day),
     temp: Math.round(c.temperature_2m) + '°',
     desc: `${desc} · ${cfg.weather?.city || ''}`,
-    range: (hi != null ? `↑${hi}° ↓${lo}° · ` : '') + `Feels like ${Math.round(c.apparent_temperature)}°`,
+    range: (hi != null ? `↑${hi}° ↓${lo}° · ` : '') + t('wx.feelsLike', { deg: Math.round(c.apparent_temperature) }),
   };
 }
 
@@ -438,7 +476,7 @@ export function quotaProviders() { return D.quotas?.providers || []; }
 
 export function renderStatus(el) {
   const via = transport();
-  const name = online ? (D.state?.host || 'PC') + (via === 'wifi' ? ' · Wi-Fi' : via === 'usb' ? ' · USB' : '') : online === false ? t('panel.pcNotConnected') : t('panel.connecting');
+  const name = online ? (D.state?.host || 'PC') + (via === 'wifi' ? ' · ' + t('status.wiFi') : via === 'usb' ? ' · ' + t('status.usb') : '') : online === false ? t('panel.pcNotConnected') : t('panel.connecting');
   const kids = [h('span', 'dot ' + (online ? 'on' : online === false ? 'off' : '')), h('span', null, name)];
   const bat = phoneBattery();
   if (bat) kids.push(h('span', 'sep', '·'), h('span', null, bat));
@@ -450,9 +488,9 @@ export function renderStatus(el) {
     kids.push(s);
   }
   const waiting = (D.work?.sessions || []).filter((s) => s.status === 'waiting').length;
-  if (waiting) kids.push(h('span', 'sep', '·'), h('span', 'smini', `${waiting} waiting`));
+  if (waiting) kids.push(h('span', 'sep', '·'), h('span', 'smini', t('status.waitingCount', { n: waiting })));
   const u = D.state?.update;
-  if (u) kids.push(h('span', 'sep', '·'), h('span', 'upd', u.app && via !== 'usb' ? `⬆ ${u.latest}: plug in USB to update` : `⬆ ${u.latest} available`));
+  if (u) kids.push(h('span', 'sep', '·'), h('span', 'upd', u.app && via !== 'usb' ? t('status.updateUsb', { version: u.latest }) : t('status.updateAvailable', { version: u.latest })));
   el.replaceChildren(...kids);
   // Too long for the widget: drop the quota summaries, the most dispensable part.
   while (el.scrollWidth > el.clientWidth + 1 && el.querySelector('.qm')) [...el.querySelectorAll('.qm')].pop().remove();
@@ -471,11 +509,19 @@ export async function runShortcut(btn, id) {
 }
 
 export function keyButton(s) {
-  const b = h('button', 'key' + (s.toggle ? ' toggle' : ''), h('span', 'k-icon', s.icon || '•'), h('span', 'k-label', s.label));
+  const icon = h('span', 'k-icon', s.icon || '•');
+  const b = h('button', 'key' + (s.toggle ? ' toggle' : ''), icon, h('span', 'k-label', s.label));
   b.style.setProperty('--k', s.color || '#6b7280');
   b.dataset.id = s.id;
   b.addEventListener('click', () => runShortcut(b, s.id));
+  if (s.iconRev != null) applyShortcutIcon(icon, s.id);
   return b;
+}
+
+function applyShortcutIcon(icon, id) {
+  const img = new Image();
+  img.onload = () => { icon.replaceChildren(img); icon.classList.add('k-icon-img'); };
+  img.src = `${API}/shortcuts/icon?id=${encodeURIComponent(id)}`;
 }
 
 // ---------------------------------------------------------------- media (shared state, any number of widgets)
@@ -518,10 +564,11 @@ export function averageColor(img) {
 }
 export const setAmbient = (rgb) => document.documentElement.style.setProperty('--ambient', (artTint && rgb) || DEFAULT_AMBIENT);
 
-export const MEDIA_HTML = `
+/** The empty media card. A function, not a constant: its texts are translated when the widget is built. */
+export const mediaHtml = () => `
   <div class="m-top">
     <div class="art-wrap"><img class="art" alt=""><div class="art-ph">♪</div></div>
-    <div class="m-text"><div class="m-app"><span class="m-source-icon" aria-hidden="true"></span><span class="m-app-name">Media</span></div><div class="m-title">Nothing playing</div><div class="m-artist">Start something on the PC</div></div>
+    <div class="m-text"><div class="m-app"><span class="m-source-icon" aria-hidden="true"></span><span class="m-app-name">Media</span></div><div class="m-title">${t('w.nothingPlaying')}</div><div class="m-artist">${t('w.startOnPc')}</div></div>
   </div>
   <div class="m-progress"><div class="bar"><div class="fill"></div></div><div class="times"><span class="m-pos">0:00</span><span class="m-dur">0:00</span></div></div>
   <div class="m-controls">
@@ -928,10 +975,10 @@ export function handleEvent(e) {
   else if (e.kind === 'reload') location.reload();
 }
 
-export const WIDGET_ICONS = { discord: '💬', rules: '⚡', chargecare: '🔋', nextup: '⏭️', moon: '🌙', wordclock: '🔤', clock: '🕒', weather: '⛅', forecast: '🌦️', media: '🎵', stat: '📈', gauge: '⏲️', chart: '📊', meters: '💾', gpu: '🎮', quotas: '✳️', sessions: '🤖',
+export const WIDGET_ICONS = { camera: '📹', dictate: '🎙️', spectrum: '📶', 'app-console': '🎛️',discord: '💬', rules: '⚡', chargecare: '🔋', nextup: '⏭️', moon: '🌙', wordclock: '🔤', clock: '🕒', weather: '⛅', forecast: '🌦️', media: '🎵', stat: '📈', gauge: '⏲️', chart: '📊', meters: '💾', gpu: '🎮', quotas: '✳️', sessions: '🤖',
   github: '🐙', processes: '⚙️', shortcuts: '🎛️', button: '🔘', worldclock: '🌍', calendar: '📅', pomodoro: '🍅', countdown: '⏳', note: '📝', command: '💻',
   push: '📡', inbox: '📬', label: '🔤', analog: '🕰️', progress: '📆', stopwatch: '⏱️', timer: '⏲️', counter: '🔢', breathe: '🫁', quote: '💬',
-  checklist: '✅', battery: '🔋', topprocs: '🔥', quotaring: '🎯', volume: '🔊', sun: '🌅', air: '🍃', hackernews: '📰', feeds: '🗞️', exchange: '💱', crypto: '🪙', image: '🖼️', pcswitch: '🖥️' };
+  checklist: '✅', battery: '🔋', topprocs: '🔥', quotaring: '🎯', volume: '🔊', sun: '🌅', air: '🍃', hackernews: '📰', feeds: '🗞️', photos: '🖼️', exchange: '💱', crypto: '🪙', image: '🖼️', pcswitch: '🖥️' };
 
 // ================================================================= pages
 export const pager = $('pager');
@@ -996,8 +1043,12 @@ export function buildLayout() {
     sec.dataset.id = p.id;
     pager.appendChild(sec);
   });
-  buildDots();
   const idx = Math.max(0, pages.findIndex((p) => p.id === prevId));
+  if (pagePaused && (pages.length < 2 || (pausedPageId && pages[idx]?.id !== pausedPageId))) {
+    pagePaused = false;
+    pausedPageId = null;
+  }
+  buildDots();
   curPage = -1;
   goPage(idx, true);
   requestAnimationFrame(() => setActive(true));
@@ -1034,18 +1085,107 @@ export function setActive(all = false) {
 }
 
 // ---------------------------------------------------------------- navigation: swipe, dots, overview, volume keys, agent events
+export let pagePaused = false;
+let pausedPageId = null;
+let pagePauseBtn = null;
+let pageOverlayTimer = 0;
+
+/** Builds an inline SVG element for the page pause toggle and center overlay. */
+function makeSvg(cls, d) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  if (cls) svg.setAttribute('class', cls);
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', d);
+  svg.appendChild(path);
+  return svg;
+}
+
+/** Shows a 2-second centered pause or play overlay when page switching is toggled. */
+export function showPagePauseFeedback(paused) {
+  const overlay = $('pagePauseOverlay');
+  if (!overlay) return;
+  if (pageOverlayTimer) { clearTimeout(pageOverlayTimer); pageOverlayTimer = 0; }
+  overlay.replaceChildren(h('div', 'rot-overlay-icon',
+    makeSvg('', paused ? 'M6 5h4v14H6zM14 5h4v14h-4z' : 'M8 5v14l11-7z')));
+  overlay.classList.remove('show');
+  void overlay.offsetWidth;
+  overlay.classList.add('show');
+  pageOverlayTimer = setTimeout(() => {
+    overlay.classList.remove('show');
+    pageOverlayTimer = 0;
+  }, 2000);
+}
+
+/** Syncs the #dots bar and .page-pause button state with `pagePaused`. */
+export function syncPagePauseUi() {
+  const dots = $('dots');
+  if (dots) dots.classList.toggle('paused', pagePaused);
+  if (pagePauseBtn) {
+    pagePauseBtn.classList.toggle('on', pagePaused);
+    pagePauseBtn.setAttribute('aria-label', t('panel.pagePause'));
+    pagePauseBtn.setAttribute('aria-pressed', String(pagePaused));
+    pagePauseBtn.title = pagePaused ? t('panel.pagePaused') : t('panel.pagePause');
+  }
+}
+
+/** Sets whether automatic page switching (idle return and rules) is paused. */
+export function setPagePaused(next, { feedback = false, resume = true } = {}) {
+  const val = !!(next && pages.length >= 2);
+  if (val === pagePaused) return pagePaused;
+  pagePaused = val;
+  pausedPageId = pagePaused ? (pages[curPage]?.id ?? null) : null;
+  lastTouch = Date.now();
+  syncPagePauseUi();
+  if (feedback) {
+    haptic();
+    showPagePauseFeedback(pagePaused);
+  }
+  if (pagePaused && navQueue.length) navQueue = navQueue.filter((r) => r.kind !== 'home');
+  // leaving the page by hand ends the pause, but a waiting rule moves only after that page change has landed: the
+  // queue's own 250 ms timer picks it up, so a held rule records the page the user went to as the one to return to
+  if (resume) pump();
+  return pagePaused;
+}
+
+/** Toggles page-level switching pause with haptic and visual feedback. */
+export function togglePagePaused() {
+  if (pages.length < 2) return false;
+  return setPagePaused(!pagePaused, { feedback: true });
+}
+
 export function buildDots() {
-  $('dots').replaceChildren(...pages.map(() => h('i')));
-  $('dots').hidden = pages.length < 2;
+  const dots = $('dots');
+  if (pages.length < 2) {
+    pagePauseBtn = null;
+    dots.replaceChildren();
+    dots.classList.remove('paused');
+    dots.hidden = true;
+    return;
+  }
+  pagePauseBtn = h('button', 'page-pause',
+    makeSvg('i-pause', 'M7 5h4v14H7zM13 5h4v14h-4z'),
+    makeSvg('i-play', 'M8 5v14l11-7z'));
+  pagePauseBtn.type = 'button';
+  pagePauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePagePaused();
+  });
+  dots.replaceChildren(...pages.map(() => h('i')), pagePauseBtn);
+  dots.hidden = false;
+  syncPagePauseUi();
 }
 
 export function updateDots() {
-  [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i === curPage));
+  $('dots').querySelectorAll('i').forEach((d, i) => d.classList.toggle('on', i === curPage));
 }
 
 export let snapTimer = 0;
 export function goPage(i, instant = false) {
   i = Math.max(0, Math.min(pages.length - 1, i));
+  if (curPage >= 0 && i !== curPage && pagePaused) setPagePaused(false, { feedback: false, resume: false });
   if (!instant) { pager.scrollTo({ left: i * window.innerWidth, behavior: 'smooth' }); return; }
   // scroll-snap-stop: always would stop a programmatic jump at the next page, so snapping is paused for the jump.
   pager.style.scrollSnapType = 'none';
@@ -1143,6 +1283,7 @@ export function requestBack(rule) {
 /** Seconds of no touch after which this page goes home (0 = stay). */
 const idleLimit = () => pages[curPage]?.idleSec ?? dsp().idleReturnSec ?? 90;
 function idleDue() {
+  if (pagePaused) return false;
   const idle = idleLimit();
   if (!(idle > 0)) return false;
   const maxHold = (dsp().holdMaxMin ?? 30) * 60_000;
@@ -1155,7 +1296,12 @@ function softGo(i) {
   if (i === curPage) return;
   if (Math.abs(i - curPage) === 1) { goPage(i); return; }
   pager.classList.add('fade');
-  setTimeout(() => { goPage(i, true); pager.classList.remove('fade'); }, 320);
+  const pausedBefore = pagePaused; // the Back key goes home through here while paused, and that must still work
+  setTimeout(() => {
+    pager.classList.remove('fade');
+    if (pagePaused && !pausedBefore) return; // paused during the fade: this automatic switch is dropped
+    goPage(i, true);
+  }, 320);
 }
 
 function perform(req) {
@@ -1214,6 +1360,7 @@ function nextRequest() {
 function waitReason(req) {
   if (!$('approval').hidden) return 'after the permission prompt';
   if (req.kind === 'home') return '';
+  if (pagePaused) return t('panel.pagePausedWait');
   const grace = (dsp().touchGraceSec ?? 20) * 1000;
   if (Date.now() - lastUserTouch < grace) return 'waits until you are done';
   if (sheet || !$('overview').hidden) return 'waits until you are done';
@@ -1295,7 +1442,7 @@ export function renderRulesBtn() {
   const paused = rulesPaused && rulesPaused > Date.now();
   b.hidden = PREVIEW || !online;
   b.classList.toggle('on', !!paused);
-  b.textContent = paused ? t('panel.rulesPausedUntil', { time: fmtHM(new Date(rulesPaused)) }) : t('panel.pauseRules1h');
+  b.replaceChildren(icon(paused ? 'play' : 'pause', 'm'), paused ? t('panel.rulesPausedUntil', { time: fmtHM(new Date(rulesPaused)) }) : t('panel.pauseRules1h'));
 }
 
 export let titleTimer = 0;
@@ -1312,7 +1459,9 @@ export function flashTitle() {
 export function onScroll() {
   const p = Math.round(pager.scrollLeft / window.innerWidth);
   if (p === curPage) return;
+  const prev = curPage;
   curPage = p;
+  if (prev >= 0 && pagePaused) setPagePaused(false, { feedback: false, resume: false });
   updateDots();
   flashTitle();
   setActive();
@@ -1361,7 +1510,44 @@ export function switchPc(pc) {
 export function closeOverview() { $('overview').hidden = true; }
 $('overview').addEventListener('click', closeOverview);
 $('ovRules').addEventListener('click', (e) => { e.stopPropagation(); toggleRulesPause(); });
-$('dots').addEventListener('click', openOverview);
+
+let dotsHoldTimer = 0, dotsHoldStart = null, heldDots = false;
+/** Cancels any pending long-press hold timer on the #dots bar. */
+function clearDotsHold() {
+  if (dotsHoldTimer) { clearTimeout(dotsHoldTimer); dotsHoldTimer = 0; }
+  dotsHoldStart = null;
+}
+$('dots').addEventListener('pointerdown', (e) => {
+  heldDots = false;
+  clearDotsHold();
+  if (pages.length < 2 || dimmed || document.body.classList.contains('waking')) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (e.target.closest('.page-pause')) return;
+  dotsHoldStart = [e.clientX, e.clientY];
+  dotsHoldTimer = setTimeout(() => {
+    dotsHoldTimer = 0;
+    dotsHoldStart = null;
+    heldDots = true;
+    togglePagePaused();
+  }, 450);
+});
+$('dots').addEventListener('pointermove', (e) => {
+  if (dotsHoldStart && Math.hypot(e.clientX - dotsHoldStart[0], e.clientY - dotsHoldStart[1]) > 10) clearDotsHold();
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => $('dots').addEventListener(ev, clearDotsHold));
+window.addEventListener('blur', clearDotsHold);
+$('dots').addEventListener('click', (e) => {
+  if (heldDots) {
+    heldDots = false;
+    if (!e.target.closest('.page-pause')) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
+  if (e.target.closest('.page-pause')) return;
+  openOverview();
+});
 
 // Long press on an empty part of a page opens the overview too.
 export let pressTimer = 0;
@@ -1386,7 +1572,7 @@ pager.addEventListener('touchstart', (e) => {
   swipeTracking = false;
   if (e.touches.length !== 1 || pages.length < 2) return;
   // Dragging a slider, the volume bar, a list or the station carousel must never flip (or wrap) the page.
-  if (volDragging || e.target.closest?.('button, input, textarea, select, a, [contenteditable], .s-list, .vb, .radio-carousel-track')) return;
+  if (volDragging || e.target.closest?.('button, input, textarea, select, a, [contenteditable], .s-list, .vb, .radio-carousel-track, .ac-dial')) return;
   swipeStartX = e.touches[0].clientX;
   swipeStartY = e.touches[0].clientY;
   swipeStartPage = curPage;
@@ -1574,6 +1760,7 @@ export function tick() {
     else { navQueue.push({ kind: 'home', at: Date.now(), priority: -1 }); pump(); }
   }
   applyBurnIn();
+  document.body.classList.toggle('controls-top', cfg.display?.controlsTop === true);
   if (!nightOn) emit('tick');
   setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
 }
@@ -1722,6 +1909,7 @@ window.onAgentStream = (event, data) => {
   try { d = JSON.parse(data); } catch (_) { return; }
   if (event === 'state') { applyState(d); for (const e of evPre || []) evOffer(e); evPre = null; }
   else if (event === 'work') applyWork(d);
+  else if (event === 'spectrum') window.dispatchEvent(new CustomEvent('phonebox-spectrum', { detail: d }));
   else if (event === 'event') { if (evPre) { evPre.push(d); if (evPre.length > 100) evPre.shift(); } else evOffer(d); }
 };
 export const streaming = () => streamOn && Date.now() - lastStateAt < 3000;

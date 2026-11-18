@@ -8,14 +8,20 @@ public sealed record DeviceBattery(string Name, int Level, string Kind, bool? Ch
 
 /// <summary>
 /// Battery levels of wireless devices: headphones, mice, keyboards, controllers (and a laptop's own battery on Linux).
-///  - Windows: the Bluetooth battery property of paired devices (what Settings › Bluetooth shows), read with SetupAPI.
+///  - Windows: Bluetooth battery property via SetupAPI (what Settings › Bluetooth shows) and Razer USB HID devices.
 ///  - Linux: UPower (BlueZ devices, Logitech receivers, the laptop battery).
 ///  - macOS: ioreg (Magic Mouse / Keyboard / Trackpad) and system_profiler (AirPods and other headphones).
 /// Read once a minute, only while a phone shows the widget.
 /// </summary>
-public sealed class BatteryMonitor(ILogger<BatteryMonitor> log) : BackgroundService
+public sealed partial class BatteryMonitor(ILogger<BatteryMonitor> log) : BackgroundService
 {
     private volatile IReadOnlyList<DeviceBattery> _devices = [];
+#if WINDOWS
+    private readonly object _publishLock = new();
+    private IReadOnlyList<DeviceBattery> _btDevices = [];
+    private IReadOnlyList<DeviceBattery> _razerDevices = [];
+    private Task? _razerTask;
+#endif
     private long _lastRequest;
     private long _readAt;
 
@@ -33,30 +39,55 @@ public sealed class BatteryMonitor(ILogger<BatteryMonitor> log) : BackgroundServ
             if (wanted && Environment.TickCount64 - _readAt > 60_000)
             {
                 _readAt = Environment.TickCount64;
+#if WINDOWS
+                try
+                {
+                    var bt = await Task.Run(Windows, ct);
+                    lock (_publishLock)
+                    {
+                        _btDevices = bt;
+                        _devices = SortDevices(MergeRazerIntoBluetooth(_btDevices, _razerDevices));
+                    }
+                }
+                catch (Exception ex) { log.LogDebug("batteries: {Msg}", ex.Message); }
+
+                if (_razerTask is null || _razerTask.IsCompleted)
+                {
+                    _razerTask = Task.Run(() =>
+                    {
+                        var (razer, error) = WindowsRazer();
+                        if (error is not null) log.LogDebug("batteries (razer): {Msg}", error);
+                        lock (_publishLock)
+                        {
+                            _razerDevices = razer;
+                            _devices = SortDevices(MergeRazerIntoBluetooth(_btDevices, _razerDevices));
+                        }
+                    }, ct);
+                }
+#else
                 try { _devices = await Task.Run(Read, ct); }
                 catch (Exception ex) { log.LogDebug("batteries: {Msg}", ex.Message); }
+#endif
             }
             await Task.Delay(1000, ct);
         }
     }
 
+    private static List<DeviceBattery> SortDevices(IEnumerable<DeviceBattery> list)
+        => list.OrderBy(d => d.Kind == "laptop" ? 1 : 0).ThenBy(d => d.Name).ToList();
+
+#if !WINDOWS
     private static IReadOnlyList<DeviceBattery> Read()
-    {
-#if WINDOWS
-        var list = Windows();
-#else
-        var list = OperatingSystem.IsMacOS() ? MacOs() : Linux();
+        => SortDevices(OperatingSystem.IsMacOS() ? MacOs() : Linux());
 #endif
-        return list.OrderBy(d => d.Kind == "laptop" ? 1 : 0).ThenBy(d => d.Name).ToList();
-    }
 
     /// <summary>Guesses the kind of device from its name.</summary>
     public static string KindOf(string name)
     {
         var n = name.ToLowerInvariant();
-        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"buds|airpods|headphone|headset|earbud|earphone|\bwh-|\bwf-|jabra|bose|beats|sennheiser|soundcore|\bqc\d|xm\d|arctis|hyperx cloud")) return "headphones";
-        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"mouse|mx master|mx anywhere|pebble|trackball|trackpad|\bm\d{3}\b|g\d{3} ")) return "mouse";
-        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"keyboard|keys|\bk\d{3}\b|slim|craft|magic keyboard")) return "keyboard";
+        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"buds|airpods|headphone|headset|earbud|earphone|\bwh-|\bwf-|jabra|bose|beats|sennheiser|soundcore|\bqc\d|xm\d|arctis|hyperx cloud|blackshark|barracuda|kraken|nari|kaira|opus")) return "headphones";
+        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"mouse|mx master|mx anywhere|pebble|trackball|trackpad|\bm\d{3}\b|g\d{3} |basilisk|viper|deathadder|naga|orochi|cobra|lancehead|mamba")) return "mouse";
+        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"keyboard|keys|\bk\d{3}\b|slim|craft|magic keyboard|blackwidow|huntsman|deathstalker|ornata|tartarus")) return "keyboard";
         if (System.Text.RegularExpressions.Regex.IsMatch(n, @"controller|gamepad|xbox|dualsense|dualshock|joy-con|8bitdo")) return "controller";
         if (System.Text.RegularExpressions.Regex.IsMatch(n, @"pencil|stylus|pen\b")) return "pen";
         return "other";
@@ -94,7 +125,7 @@ public sealed class BatteryMonitor(ILogger<BatteryMonitor> log) : BackgroundServ
         // the same model paired twice (e.g. a mouse on two Easy-Switch channels): tell them apart by the address
         return found.Select(f =>
         {
-            var dupes = found.Count(x => x.Name == f.Name) > 1;
+            var dupes = found.Count(x => string.Equals(x.Name, f.Name, StringComparison.OrdinalIgnoreCase)) > 1;
             var addr = System.Text.RegularExpressions.Regex.Match(f.Id, @"DEV_([0-9A-F]{12})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var name = dupes && addr.Success ? $"{f.Name} ({addr.Groups[1].Value[^4..]})" : f.Name;
             return new DeviceBattery(name, f.Level, KindOf(f.Name), null);
