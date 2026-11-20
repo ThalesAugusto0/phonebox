@@ -3,19 +3,172 @@
 ## Unreleased
 
 **Widgets**
+- Shortcut keys: a **Long press runs** option on each key. Tapping the key on the phone runs it as before; holding it for
+  half a second runs another key you choose (hold *Mute* to open the mixer). The phone only says the key was held, so
+  the long press cannot point at anything but a key from your own settings.
+
+## 0.9.24 — 2026-11-20
+
+A security fix for phones connected over USB: the USB connection now answers only the PhoneBox app, so **update the
+agent and the phone app together**. Also: audio mixers show one control per app on Windows, Microphone and Output
+selection fit side by side, device batteries refresh faster, and a phone that is plugged in can be left as it is.
+
+**Security**
+- The USB connection answers only the PhoneBox app. `adb reverse` now ends on a loopback port of its own instead of the
+  agent's local port, over TLS that the app pins to the agent's certificate, and every request must carry a key the
+  app makes. The agent reads that key and hands over the certificate's fingerprint over adb, through a place only the
+  adb shell can reach, after checking that it belongs to the PhoneBox app. Over USB the phone reaches the same paths as
+  over Wi-Fi, plus its pairing data and the feed proxy; the settings, shortcut tests and pairing controls stay on the
+  computer. **Update the agent and the phone app together**: an older app can't use USB with this agent, and the
+  settings page offers its update. If an app you don't trust was ever on the panel phone, pair Wi-Fi again and make a
+  new webhook key, and renew the Home Assistant, Discord and other tokens in the settings
+  ([GHSA-j6qc-pm3p-fhg7](https://github.com/ersinkoc/phonebox/security/advisories/GHSA-j6qc-pm3p-fhg7)).
+
+**Widgets**
+- Audio mixers on Windows: one control per app instead of one per Windows audio session. An app that plays on two
+  outputs, or that you moved to another output, no longer shows up twice. Apps get the name Windows' own mixer shows
+  (MSI Center, not `DCv2`), and the phone lists only apps that are playing, plus System sounds. Volume and mute reach
+  every session of the app; ducking, the sleep timer and audio profiles still see every session (#292,
+  [RawreeUX](https://github.com/RawreeUX)).
+- Microphone and Output selection: a **Layout** option (horizontal, grid or the vertical list as before), so several
+  devices fit side by side on a phone, and **Device labels** to show a short name or an emoji for a device
+  (`Speakers (USB Audio CODEC) = 🔊`, one per line, matched by its exact name). Switching still uses the device itself,
+  and the full name stays in the button's tooltip (#294, [RawreeUX](https://github.com/RawreeUX)).
+- Audio mixers: mute is a compact speaker icon under the volume instead of a wide Mute / Unmute button, so many apps
+  fit without overlapping (#293, [RawreeUX](https://github.com/RawreeUX)).
+- Device batteries on Windows: a paired Bluetooth device that has disconnected (a controller or headset turned off) is
+  no longer shown with its last battery reading (#295, [RawreeUX](https://github.com/RawreeUX)).
+- Device batteries: the Razer Barracuda Pro, read through its 2.4 GHz receiver, also while Razer Synapse runs (#296,
+  [RawreeUX](https://github.com/RawreeUX)).
+- Device batteries refresh every 20 seconds while the widget is shown, instead of once a minute; macOS stays at once a
+  minute, because reading headphones there takes seconds (#297, [RawreeUX](https://github.com/RawreeUX)).
+
+**Agent**
+- A new **Settings › Display › Open PhoneBox when the phone is plugged in** option (on by default, so nothing
+  changes until you turn it off). Off, a phone that connects over USB, or reconnects after adb restarts, is left as it
+  is instead of being woken with the panel brought to the front, for a phone that also runs app tests over adb (#291,
+  [snackncode](https://github.com/snackncode)).
+
+## 0.9.23 — 2026-11-20
+
+On air works again on current Windows 11, the Spectrum bars reach full height on monitors and surround outputs, a
+waiting update shows in the settings page's header, and Claude quotas on macOS read the Keychain past a stale
+credentials file.
+
+**Widgets**
+- Spectrum bars at full height on every output device. On outputs that apply the Windows volume in software (HDMI and
+  DisplayPort monitors, S/PDIF), the captured sound was as quiet as the slider, so a monitor at 28 % left the bars
+  nearly flat; the agent now undoes that volume (up to +40 dB) as the sound arrives. Stereo on a surround output (a
+  4-channel controller, 5.1 / 7.1) is no longer lowered 6–12 dB. With no output device to capture, the log says so
+  once instead of every second (#263, [joshua-jebadurai](https://github.com/joshua-jebadurai)).
+
+**Settings page**
+- A waiting update shows in the header, so it is seen from every section instead of only in the Updates card far
+  down General: **Update to 0.9.x** installs it, like the card's Update now. It waits while there are unsaved changes,
+  because the agent restarts, and says so while the update runs.
+
+**Agent**
+- Claude quotas on macOS: a `~/.claude/.credentials.json` left behind by another tool or an older Claude Code no
+  longer hides the sign-in Claude Code renews in the Keychain. Once the file's token is missing or expired, the agent
+  reads the Keychain too and uses the sign-in that expires later, instead of showing "Token expired" for good (#277,
+  [sonvc94](https://github.com/sonvc94)).
+- On air works again on current Windows 11. Recent builds (26200 with the October 2026 updates, 26300) stopped
+  updating the privacy record the agent read, so the widget and the microphone and camera rules stayed off during
+  calls. The agent now asks Windows directly: running recordings on any microphone, and cameras that are streaming
+  (Windows 10 2004 and later). The old record is the fallback where these can't be read (#282,
+  [ridhampansara27](https://github.com/ridhampansara27)).
+
+## 0.9.22 — 2026-11-19
+
+Greek, a Trackpad widget, Claude Code session details and chat titles, CPU and GPU temperature on Apple silicon Macs,
+a choice of weather model, stroke icons everywhere, closer media sync, much less CPU for blinking status lights, and a
+macOS Accessibility permission that survives updates.
+
+**Languages**
+- Greek (Ελληνικά): the panel, the settings page, the widget and template catalog, the Android pairing dialogs and a
+  Greek README. Pick it under Settings › General › Language, or let the phone's language choose it (#262,
+  [Vasilispapg](https://github.com/Vasilispapg)).
+
+**Widgets**
+- CPU and GPU temperature on Macs with Apple silicon (macOS 14 and later), read from the SMC without root or extra
+  tools: the CPU temp metric and the GPU widget's temperature now work on macOS. The keys follow macmon's rule (CPU:
+  Tp/Te/Ts, GPU: Tg). Intel Macs and older macOS versions still show no temperature (#272,
+  [sonvc94](https://github.com/sonvc94)).
 - Trackpad: move, click and scroll the computer's mouse from the phone, with tap to click, two fingers to right-click
   and scroll, hold to drag and an optional edge scroll bar. Mouse control is off until you turn on **Allow controlling
   the mouse from the phone** in the widget's options; Windows, and Linux with `xdotool` under X11 (#250, #251,
   [Prajjwal2404](https://github.com/Prajjwal2404)).
 - Weather: Settings › General › Weather has a temperature unit, Celsius or Fahrenheit, for the clock's weather line
   and the Forecast widget (#256, [haydn9000](https://github.com/haydn9000)).
+- Weather: Settings › General › Weather can pin the Open-Meteo forecast model (GFS, ECMWF, ICON, UKMO, GEM, JMA,
+  Météo-France or CMA) instead of Open-Meteo's automatic best match. Only Automatic and GFS supply every value; other
+  models may leave out the UV index or the chance of rain, and the panel then just leaves those out. Météo-France
+  and CMA forecast about 4 and 5 days, and the Forecast widget shows only the days there are (#271,
+  [sonvc94](https://github.com/sonvc94)).
+- Quota ring: provider list includes Cursor and Grok (Grok uses its own mark), and offers every provider currently
+  reported by CodexBar (#260, [ajaybali9](https://github.com/ajaybali9)).
+- AI sessions: Cursor agent chats from `~/.cursor/projects/*/agent-transcripts` can show alongside Claude Code and Codex
+  (off by default in Settings › General › Cursor sessions). Only the last message's role is kept; chat text is never
+  shown, stored or sent. Project names use the folder basename from Cursor's `workspaceStorage`
+  (#259, [ajaybali9](https://github.com/ajaybali9)).
+- Sessions widget: tap a Claude Code session to see what it is doing. The details list its recent steps (tool name and
+  file, with how long a running one has taken), the last exchange, and a scrollable list of the last 30 messages. Your
+  prompts and Claude's replies leave the computer only when you turn on Settings › Claude Code › **Show the
+  conversation on the phone**, which is off by default (#266,
+  [Vasilispapg](https://github.com/Vasilispapg)).
 
 **Panel**
+- Less CPU, so a panel on battery lasts longer: the clock's colon, the session status dots, the OBS light, the on-air
+  sign, the dictation microphone and the radio equalizer no longer run endless CSS animations, which made the phone
+  draw a frame on every display refresh (120 a second on some phones) while they were on screen. On a Galaxy S25 Ultra
+  the clock page went from about 18 % to 9 % of a core. The colon blinks as before; the other lights pulse in two steps
+  instead of fading (#273, #274, [Vasilispapg](https://github.com/Vasilispapg)).
+- Media: the position bar is a slider; hold it to see where the song will continue, and it seeks when you let go. The
+  song time follows the computer more closely, also with Spotify on macOS, which reports no position of its own, and
+  no longer steps back and forth.
+- Volume and media changes reach the phone at once instead of at the next second, and on macOS a volume change takes
+  milliseconds instead of up to a second and a half. While the screen is off or another app is in front, the panel
+  stops asking the agent for updates and catches up when it is back (#268,
+  [Vasilispapg](https://github.com/Vasilispapg)).
+- Pomodoro: the Vietnamese example for your own sequence uses the words the timer understands (`25 focus, 5 break`);
+  copied as shown, the translated words were not understood.
 - Clock widget: a new option chooses which AI quota providers its status line shows; clocks saved before it show
   all of them, as before (#225, #228, [Seyamalam](https://github.com/Seyamalam)).
 - The computer switch buttons (overview and Computers widget) and the session details close button draw stroke icons
   instead of an emoji and a text X, so they look the same on older phones (#252,
   [Seyamalam](https://github.com/Seyamalam)).
+- Sessions widget: with many Claude Code chats in one folder every row read the same. Settings › Claude Code › **Show
+  Claude Code chat titles on the phone** (off by default) shows each chat's title, the name you gave it or the one
+  Claude Code wrote, with the folder on the second line. The title is read from the end of the chat's own file on this
+  computer and, with the switch off, is not read or sent at all (#261, [Vasilispapg](https://github.com/Vasilispapg)).
+- Sessions: claude-mem's background sessions (the short Claude Code runs in `~/.claude-mem/observer-sessions` that
+  write its memory notes) no longer show up, so they no longer pop up a "finished" message every few minutes.
+  Settings › General › Display › **Show a message when a session finishes** turns that message off for every session;
+  the "needs input" message still shows (#275, [TheRedViperV](https://github.com/TheRedViperV)).
+- Session details show Folder, Status, Started and Last activity in one compact row (two rows on a narrow screen)
+  instead of four lines.
+- Every remaining emoji in the panel and the settings page (weather, battery, widget and page icons, Home Assistant
+  and rule icons, media and timer buttons, the moon phase) is drawn as the same Lucide stroke icon, so the panel looks
+  the same on every phone. Emoji saved in your configuration keep working and are shown as the matching icon; one
+  without an icon, or any text, is shown as typed. Icon-only buttons have translated names for screen readers (#265,
+  [Vasilispapg](https://github.com/Vasilispapg)).
+
+**Settings page**
+- Clearer and calmer: section icons and a highlighted current section and page, long introductions folded to two lines
+  (click to open), larger buttons and switches, hover and keyboard-focus states, a spinner on Save and an "Unsaved
+  changes" label, toasts with a mark that screen readers announce, and Escape closes dialogs. Motion stays off with the
+  system's reduce-motion setting (#264, [Vasilispapg](https://github.com/Vasilispapg)).
+
+**Agent**
+- macOS: the Accessibility permission (shortcuts that press keys) carries over to later updates. The agent is signed
+  with PhoneBox's own certificate instead of ad hoc, whose signature changed with every build, so macOS dropped the
+  permission after every update. Updating from an older version needs it once more: remove PhoneBoxAgent under
+  System Settings › Privacy & Security › Accessibility with − and add it again. The setup script and the message on
+  the phone say so (#269, [nejcbat-x](https://github.com/nejcbat-x)).
+- Shortcuts that press keys can use the keypad: `numpad0` to `numpad9`, `numpadenter`, `numpadadd`, `numpadsubtract`,
+  `numpadmultiply`, `numpaddivide` and `numpaddecimal` (also written `num3`, `kp3` or `KP_3`), sent as the keypad's own
+  keys, so a shortcut bound to Ctrl+Alt+Numpad3 in Discord or a game is matched (#270,
+  [adrianhermida](https://github.com/adrianhermida)).
 
 ## 0.9.21 — 2026-11-18
 

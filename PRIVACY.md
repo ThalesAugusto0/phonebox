@@ -23,10 +23,28 @@ Last updated: 2026-11-15 (PhoneBox 0.9.6).
   `VIBRATE`, and for the microphone (`RECORD_AUDIO`) only when a Dictation widget's button is tapped for the first time.
 - **Computer data shown on the panel** (CPU, GPU, memory, disks, processes, media, volume, AI coding sessions and
   quotas, Docker / Podman, OBS) is read locally and goes only to your phone: over the USB cable (`adb reverse` to
-  `127.0.0.1`) or, after pairing, over Wi-Fi / Tailscale with a pinned certificate and a key. On Linux, an Intel GPU's
+  `127.0.0.1`, with a key only the PhoneBox app has) or, after pairing, over Wi-Fi / Tailscale with a pinned certificate and a key. On Linux, an Intel GPU's
   load comes from the GPU usage counters in other processes' `/proc/<pid>/fdinfo` (the counters only, nothing those
   programs draw or compute); processes of other users are read only when Linux allows the agent to read them (normally
   as root or with `CAP_SYS_PTRACE`).
+- **Claude Code conversation** (off by default): with Settings › Claude Code › "Show the conversation on the phone" on,
+  tapping a Claude Code session in the sessions widget asks the agent for its last 30 messages (your prompts and
+  Claude's replies, each cut at 4000 characters) and its last 12 steps. The agent reads them from that chat's file in
+  `~/.claude/projects` and sends them only to your phone, only for a session that is running, and only while the
+  details are open. A step is the tool name plus a file name, the program a command starts with (never the command
+  line) or a web host; tool output, thinking and file contents are never sent. Nothing is stored on the phone or the
+  computer. With the switch off the agent refuses the request and no prompt or reply text is sent.
+- **Cursor sessions** (off by default; **Settings › General › Cursor sessions**): while enabled, the agent scans recent
+  `*.jsonl` files under `~/.cursor/projects/*/agent-transcripts` (about every 30 seconds for discovery) and reads a
+  bounded tail of each file to parse the last record's `role` in memory. Only that role and the file times are kept for
+  the panel; chat text is never shown, stored or sent. Project labels use the folder basename from Cursor's
+  `workspaceStorage/*/workspace.json` `folder` URI (cached about a minute), sent to the phone as the session's project
+  name over the same local USB / paired Wi-Fi link as other panel data. Turning the setting off stops the scan.
+- **Claude Code chat titles** (off by default): with Settings › Claude Code › "Show Claude Code chat titles on the
+  phone" on, the sessions widget shows each chat's title, the name you gave it or the one Claude Code wrote, which it
+  often draws from your first prompt. The agent reads only the title records at the end of the chat's file in
+  `~/.claude/projects`, never the prompts, replies or tool arguments, and sends the title only to your phone, like the
+  rest of this list. With the switch off the file is not opened and no title is sent.
 - **Sound for the Spectrum bars widget** (Windows): while an enabled page with the widget is on the phone's screen,
   the agent captures what the default output device plays, analyzes it in memory and sends only 48 loudness levels
   per frame to the phone. Audio is never stored or sent; capture stops a few seconds after the widget leaves the
@@ -53,7 +71,7 @@ identifies your GitHub account to GitHub.
 |---|---|---|---|
 | Update check | `api.github.com` (release info), `github.com` (downloads) | The repository name; with `gh` signed in and only when GitHub turns away an anonymous request, your GitHub CLI token, to `api.github.com` only | **Settings › General › Updates › Install new releases automatically** turns off installing. The check every 6 hours stays; it sends nothing about you |
 | Network latency (ping metric, "ping high" rule) | `1.1.1.1` (Cloudflare DNS) by default, an ICMP echo every 5 seconds | An empty ping packet | From 0.9.6: empty **Settings › General › Ping**, or enter another host. 0.9.5 and earlier: not switchable; block ICMP to `1.1.1.1` in your firewall |
-| Weather (phone) | `api.open-meteo.com`, every 15 minutes | The coordinates of the city you chose (Tallinn by default) | From 0.9.6: asked only while a page has a widget that shows the weather (weather, forecast, sun & moon, a clock with its weather line, or a Custom HTML widget, which gets the weather too); remove those, or turn off the clock's weather line. 0.9.5 and earlier: asked while the panel runs; choose a city you are comfortable sharing in **Settings › General › Weather** |
+| Weather (phone) | `api.open-meteo.com`, every 15 minutes | The coordinates of the city you chose (Tallinn by default), and the forecast model when one is picked in **Settings › General › Weather** | From 0.9.6: asked only while a page has a widget that shows the weather (weather, forecast, sun & moon, a clock with its weather line, or a Custom HTML widget, which gets the weather too); remove those, or turn off the clock's weather line. 0.9.5 and earlier: asked while the panel runs; choose a city you are comfortable sharing in **Settings › General › Weather** |
 | Air quality widget (phone) | `air-quality-api.open-meteo.com`, while the widget is on a page | The same coordinates | Remove the widget |
 | City search (settings page) | `geocoding-api.open-meteo.com` | The city name you type, only when you search | Don't search |
 | Claude quota | `api.anthropic.com/api/oauth/usage`, every 3 minutes after a successful check (sooner after a failed one, as often as every 30 seconds while the network is down; less often when Anthropic asks it to wait; agents running on this computer share one schedule) while Claude Code is signed in on this computer, whether or not a page shows a quota widget | The OAuth token Claude Code stores in `~/.claude/.credentials.json`, or on macOS, when that file doesn't exist, the "Claude Code-credentials" item from the default keychain search list (normally the login Keychain), read with `security find-generic-password`; read-only, PhoneBox never refreshes it. Only the Claude Code command-line sign-in is used; the Claude Desktop app's own sign-in is never read | No switch yet: it stops when Claude Code is signed out on this computer |

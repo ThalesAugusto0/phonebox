@@ -19,6 +19,8 @@ public sealed class AgentConfig
     public LanConfig Lan { get; set; } = new();
     public UpdateConfig Updates { get; set; } = new();
     public ClaudeConfig Claude { get; set; } = new();
+    /// <summary>Cursor agent-transcript sessions on the AI sessions widget (off by default).</summary>
+    public CursorConfig Cursor { get; set; } = new();
     public List<PageConfig> Pages { get; set; } = [];
     public List<Shortcut> Shortcuts { get; set; } = [];
     public List<RuleConfig> Rules { get; set; } = [];
@@ -76,7 +78,7 @@ public sealed class AgentConfig
         shortcuts = Shortcuts.Select(s =>
         {
             var pic = shortcutIcon?.Invoke(s);
-            return new { s.Id, s.Label, s.Icon, s.Color, toggle = s.Toggle || s.Cmd == "builtin:mute", iconRev = pic?.Rev, iconUpload = pic?.Upload == true };
+            return new { s.Id, s.Label, s.Icon, s.Color, toggle = s.Toggle || s.Cmd == "builtin:mute", hold = s.LongPress is not null, iconRev = pic?.Rev, iconUpload = pic?.Upload == true };
         }),
         // names only (for the Rules widget); what a rule matches on stays here
         rules = Rules.Select(r => new { r.Id, r.Name, r.Enabled, r.When }),
@@ -107,6 +109,12 @@ public sealed class WeatherConfig
     /// </summary>
     [JsonConverter(typeof(WeatherUnitJsonConverter))]
     public string Unit { get; set; } = "celsius";
+    /// <summary>
+    /// The Open-Meteo forecast model the phone asks for ("gfs_seamless", "ecmwf_ifs025"…), or "" for Open-Meteo's own
+    /// best match. Only the models in <see cref="WeatherModelJsonConverter.Models"/> reach the phone.
+    /// </summary>
+    [JsonConverter(typeof(WeatherModelJsonConverter))]
+    public string Model { get; set; } = "";
 }
 
 public sealed class PingConfig
@@ -132,11 +140,11 @@ public sealed class NightConfig
 public sealed class DisplayConfig
 {
     public AppearanceConfig? Appearance { get; set; }
-    /// <summary>UI language code ("auto", "en", "tr", "de", "fr", "es", "it", "pt", "pt-BR", "nl", "pl", "ru", "vi", "zh").</summary>
+    /// <summary>UI language code ("auto", "en", "tr", "de", "fr", "es", "it", "pt", "pt-BR", "nl", "pl", "ru", "el", "vi", "zh").</summary>
     public string Language { get; set; } = "auto";
     /// <summary>The codes the panel and the settings page are translated into (i18n.js). Casing matters for pt-BR:
     /// it is a distinct entry from pt, not a variant of it, so it must survive a save in this exact form.</summary>
-    internal static readonly string[] Languages = ["auto", "en", "tr", "de", "fr", "es", "it", "pt", "pt-BR", "nl", "pl", "ru", "vi", "zh"];
+    internal static readonly string[] Languages = ["auto", "en", "tr", "de", "fr", "es", "it", "pt", "pt-BR", "nl", "pl", "ru", "el", "vi", "zh"];
     public bool ShowSeconds { get; set; } = true;
     /// <summary>false ("14:05", default), true ("2:05 PM") or "auto" (follow the phone).</summary>
     [JsonConverter(typeof(Hour12JsonConverter))]
@@ -145,6 +153,8 @@ public sealed class DisplayConfig
     public int IdleReturnSec { get; set; } = 90;
     /// <summary>Vibrate when a session finishes or needs input.</summary>
     public bool Vibrate { get; set; } = true;
+    /// <summary>Show a message when a session finishes. The "needs input" message always shows.</summary>
+    public bool FinishToast { get; set; } = true;
     /// <summary>The phone's volume keys switch pages.</summary>
     public bool VolumeKeys { get; set; } = true;
     /// <summary>landscape, portrait or auto (follow the phone). In portrait the widgets are arranged automatically.</summary>
@@ -174,6 +184,9 @@ public sealed class DisplayConfig
 
     /// <summary>Over USB, turn off Android's screen saver (it starts on the dock / charger) and keep the phone awake while it is plugged in.</summary>
     public bool KeepAwake { get; set; } = true;
+    /// <summary>Over USB, wake the phone and open PhoneBox when it is plugged in (or adb reconnects). Off: the panel opens only
+    /// when you start it on the phone, from the tray or the settings page.</summary>
+    public bool OpenOnConnect { get; set; } = true;
     /// <summary>On macOS, sleep the connected phone when the computer locks; wake it and open PhoneBox after unlock.</summary>
     public bool FollowComputerLock { get; set; }
     /// <summary>The page the panel returns to (idle return, Back); null = the first page.</summary>
@@ -212,8 +225,20 @@ public sealed class ClaudeConfig
     public bool PhoneApprovals { get; set; } = true;
     /// <summary>How long the phone may take before Claude Code asks in the terminal instead.</summary>
     public int TimeoutSec { get; set; } = 90;
+    /// <summary>Let the phone open a Claude Code session's recent messages and steps, read from its chat file on this
+    /// computer. They are your prompts and Claude's replies, so this stays off until you turn it on.</summary>
+    public bool ShareConversation { get; set; }
     /// <summary>Only use the phone when the PC has been idle for a minute (you are away from the keyboard).</summary>
     public bool OnlyWhenAway { get; set; }
+    /// <summary>Show each Claude Code chat's title on the phone. The title is the name you gave the chat or the one
+    /// Claude Code wrote, which it often draws from your first prompt, so it stays off until you turn it on.</summary>
+    public bool ShareSessionTitles { get; set; }
+}
+
+public sealed class CursorConfig
+{
+    /// <summary>Show recent Cursor agent chats on the AI sessions widget (off by default).</summary>
+    public bool Sessions { get; set; }
 }
 
 public sealed class PageConfig
@@ -382,6 +407,8 @@ public sealed class Shortcut
     /// <summary>For toggles: the command (and arguments) that switch it off; empty = the same as switching on.</summary>
     public string? OffCmd { get; set; }
     public string? OffArgs { get; set; }
+    /// <summary>Id of another shortcut that a long press on this key runs instead (the phone only says "held"; the id is looked up here).</summary>
+    public string? LongPress { get; set; }
 }
 
 /// <summary>Reads/writes config.json; external edits are picked up on the next request.</summary>
@@ -508,6 +535,7 @@ public sealed partial class ConfigStore(string path)
     {
         c.Weather ??= new();
         c.Weather.Unit = WeatherUnitJsonConverter.Normalize(c.Weather.Unit);
+        c.Weather.Model = WeatherModelJsonConverter.Normalize(c.Weather.Model);
         c.CodexBar ??= new();
         c.CodexBar.Providers = (c.CodexBar.Providers ?? []).Where(p => p is "claude" or "codex" or "antigravity").Distinct().ToArray();
         c.CodexBar.PageSize = Math.Clamp(c.CodexBar.PageSize, 0, 6);
@@ -540,6 +568,7 @@ public sealed partial class ConfigStore(string path)
         if (c.Ping.Host.Length > 253 || c.Ping.Host.Any(ch => ch <= ' ' || ch > '~')) c.Ping.Host = PingMonitor.DefaultHost;
         c.Claude ??= new();
         c.Claude.TimeoutSec = Math.Clamp(c.Claude.TimeoutSec, 10, 3600);
+        c.Cursor ??= new();
         if (string.IsNullOrWhiteSpace(c.Updates.Repo)) c.Updates.Repo = "ersinkoc/phonebox";
         c.Lan.Port = Math.Clamp(c.Lan.Port, 1024, 65535);
         if (string.IsNullOrWhiteSpace(c.Lan.Token)) c.Lan.Token = NewToken();
@@ -590,6 +619,12 @@ public sealed partial class ConfigStore(string path)
             if (string.IsNullOrWhiteSpace(s.StateKey)) s.StateKey = null;
             if (string.IsNullOrWhiteSpace(s.OffCmd)) s.OffCmd = null;
             if (string.IsNullOrWhiteSpace(s.OffArgs)) s.OffArgs = null;
+        }
+        // a long press runs another key: drop a blank, self-referencing or dangling target, so the phone never offers a hold that does nothing
+        foreach (var s in c.Shortcuts)
+        {
+            s.LongPress = s.LongPress?.Trim();
+            if (string.IsNullOrEmpty(s.LongPress) || s.LongPress == s.Id || !c.Shortcuts.Any(o => o.Id == s.LongPress)) s.LongPress = null;
         }
         c.Phones = (c.Phones ?? []).Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Id)).GroupBy(p => p.Id).Select(g => g.First()).Take(20).ToList();
         foreach (var ph in c.Phones)
@@ -872,6 +907,28 @@ internal sealed class WeatherUnitJsonConverter : JsonConverter<string>
         if (reader.TokenType == JsonTokenType.String) return Normalize(reader.GetString());
         reader.Skip();
         return "celsius";
+    }
+
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) => writer.WriteStringValue(Normalize(value));
+}
+
+/// <summary>
+/// weather.model: one of the Open-Meteo models the settings offer, anything else "" (Open-Meteo's best match). The value
+/// goes into the phone's forecast URL, so only known names pass; like the unit, a non-string token is skipped.
+/// </summary>
+internal sealed class WeatherModelJsonConverter : JsonConverter<string>
+{
+    public static readonly string[] Models =
+        ["gfs_seamless", "ecmwf_ifs025", "icon_seamless", "ukmo_seamless", "gem_seamless", "jma_seamless", "meteofrance_seamless", "cma_grapes_global"];
+
+    public static string Normalize(string? value) =>
+        Models.FirstOrDefault(m => string.Equals(m, value?.Trim(), StringComparison.OrdinalIgnoreCase)) ?? "";
+
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String) return Normalize(reader.GetString());
+        reader.Skip();
+        return "";
     }
 
     public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) => writer.WriteStringValue(Normalize(value));

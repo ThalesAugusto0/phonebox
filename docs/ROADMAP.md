@@ -25,10 +25,31 @@ people who proposed or prototyped something are credited in the [changelog](../C
 - **Codex permission prompts on the phone**: answer Codex's own approval requests with Allow / Deny, like Claude Code's
   ([#253](https://github.com/ersinkoc/phonebox/issues/253), pull request
   [#254](https://github.com/ersinkoc/phonebox/pull/254)).
+- **Live Codex quota without a running session**: read the quota through Codex's own app-server, so the numbers
+  update while Codex isn't running on this computer ([#298](https://github.com/ersinkoc/phonebox/issues/298), pull
+  request [#290](https://github.com/ersinkoc/phonebox/pull/290)).
 - **Voice commands**: say what you want and a language model of your choice (local through Ollama, or a hosted one)
   picks from the shortcuts you allowed; opt-in, off by default ([#257](https://github.com/ersinkoc/phonebox/issues/257)).
-- **Steam friends and activity widgets** (pull request [#244](https://github.com/ersinkoc/phonebox/pull/244)): waiting
-  for an issue to agree on the scope, and a rebase.
+- **Pomodoro: an optional sound when a step ends**, off by default and silent in night mode
+  ([#267](https://github.com/ersinkoc/phonebox/issues/267)).
+- **Steam friends and activity widgets** ([#289](https://github.com/ersinkoc/phonebox/issues/289), pull request
+  [#244](https://github.com/ersinkoc/phonebox/pull/244)): scope agreed; waiting for a rebase and the review fixes.
+- **Immich album as a photo frame source** ([#278](https://github.com/ersinkoc/phonebox/issues/278), pull requests
+  [#279](https://github.com/ersinkoc/phonebox/pull/279) and [#280](https://github.com/ersinkoc/phonebox/pull/280)).
+
+## Open for a contributor
+
+Agreed in principle, not being built in-house. Say so on the issue before starting.
+
+- **Photo frame pictures as the page background** ([#288](https://github.com/ersinkoc/phonebox/issues/288)): a
+  per-page background from the photo frame's folder, dimmed under the widgets, using the same `/api/photos` feed.
+- **Android screen saver (DreamService)** ([#287](https://github.com/ersinkoc/phonebox/issues/287)): show the panel as
+  the phone's screen saver while it charges or docks, with the lock screen left in place. With Keep awake on, the
+  agent turns the phone's screen saver off over adb, so that has to follow the new setting.
+- **Headless Linux server and container image** ([#281](https://github.com/ersinkoc/phonebox/issues/281)): a documented
+  way to run the Linux agent without a desktop session, an address to advertise for Wi-Fi pairing from behind
+  container networking, and persistent data. Remote access to the settings page needs its own sign-in first; until
+  then an SSH tunnel to the loopback port is the safe way.
 
 ## Waiting on someone else
 

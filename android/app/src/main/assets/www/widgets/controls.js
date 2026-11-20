@@ -1,4 +1,4 @@
-import { API, PANEL_HEADERS, api, applyState, D, evSeq, h, en, haptic, toast, store, t } from '../main.js';
+import { API, PANEL_HEADERS, api, applyState, bridge, D, evSeq, h, en, haptic, icon, toast, store, t } from '../main.js';
 import { W } from '../registry.js';
 
 let cached = null, at = 0, epoch = 0, pending = null;
@@ -74,7 +74,7 @@ function audioView(box, options, mode) {
     if (mode === 'mic') items = items.filter(d => d.direction === 'input');
     if (mode === 'output') items = items.filter(d => d.direction === 'output');
     if (options.device) items = items.filter(d => d.id === options.device);
-    if (options.application) items = items.filter(d => d.name.toLowerCase().includes(options.application.toLowerCase()));
+    if (options.application) { const want = options.application.toLowerCase(); items = items.filter(d => [d.name, d.processName].some(n => n?.toLowerCase().includes(want))); }
     if (mode === 'mic' && !options.device) items = items.filter(d => d.default);
     if (mode === 'balance') items = items.filter(d => d.direction === 'output' && d.channels >= 2 && (options.device || d.default));
     if (!items.length) { empty(root, mode === 'app' ? 'Start the selected application and play audio' : 'No matching audio devices'); return; }
@@ -86,7 +86,8 @@ function audioView(box, options, mode) {
         const signal = meter(item.peak);
         const kind = mode === 'app' || mode === 'apps' ? 'session' : 'device';
         const controls = slider(item.name + ' volume', value => deckCommand(kind, { id: item.id, value }));
-        const mute = button('Mute', () => deckCommand(kind, { id: item.id, muted: !row.item.muted }), 'Mute ' + item.name);
+        const mute = button('', () => deckCommand(kind, { id: item.id, muted: !row.item.muted }), 'Mute ' + item.name);
+        mute.classList.add('deck-mute');
         const balance = [];
         el.append(name, signal);
         if (mode === 'balance') {
@@ -99,7 +100,11 @@ function audioView(box, options, mode) {
         row = { el, name, signal, controls, mute, item, balance }; rows.set(item.id, row);
       }
       row.item = item; row.name.textContent = item.name;
-      row.controls.set(item.volume); row.mute.textContent = item.muted ? t('w.unmute') : t('w.mute');
+      row.controls.set(item.volume);
+      const muteAction = item.muted ? t('w.unmute') : t('w.mute');
+      row.mute.replaceChildren(icon(item.muted ? 'volume-x' : 'volume-2'));
+      row.mute.title = muteAction;
+      row.mute.setAttribute('aria-label', muteAction + ' ' + item.name);
       row.controls.input.disabled = item.canControl === false; row.mute.disabled = item.canControl === false;
       row.balance.forEach((slider, channel) => { const value = item.channelVolumes?.[channel]; slider.input.disabled = value == null; slider.set(value || 0); if (value == null) slider.number.textContent = 'n/a'; });
       row.mute.setAttribute('aria-pressed', String(item.muted));
@@ -112,7 +117,16 @@ function audioView(box, options, mode) {
 }
 
 function chooser(box, options, which) {
-  const list = h('div', 'deck-list'); box.append(list);
+  const layout = ['horizontal', 'grid', 'vertical'].includes(options.layout) ? options.layout : 'vertical';
+  const list = h('div', `deck-list deck-chooser deck-chooser-${layout}`); box.append(list);
+  const labels = new Map();
+  for (const line of String(options.labels || '').split(/\r?\n/)) {
+    const spacedSeparator = line.lastIndexOf(' = ');
+    const separator = spacedSeparator >= 0 ? spacedSeparator + 1 : line.indexOf('=');
+    if (separator < 0) continue;
+    const name = line.slice(0, separator).trim(), label = line.slice(separator + 1).trim();
+    if (name && label) labels.set(name, label);
+  }
   let signature = '';
   return data => {
     const items = which === 'media' ? data.media || [] : which === 'plans' ? data.powerPlans || [] : (data.audio?.devices || []).filter(d => d.direction === which);
@@ -120,14 +134,15 @@ function chooser(box, options, which) {
     const roleIndex = {console:0,media:1,communications:2}[role];
     const chosen = which === 'media' ? selectedPlayer(data, options)?.id : roleIndex != null && ['input','output'].includes(which)
       ? data.audio?.defaults?.[which+':'+roleIndex] : items.find(d => d.default || d.state === 'Active')?.id;
-    const key = JSON.stringify([items.map(i => [i.id, i.name]), chosen]); if (key === signature) return; signature = key;
+    const key = JSON.stringify([items.map(i => [i.id, i.name]), chosen, layout, [...labels]]); if (key === signature) return; signature = key;
     if (!items.length) { empty(list, which === 'media' ? 'Start a media player on the computer' : 'No compatible devices found'); return; }
     list.replaceChildren(...items.map(item => {
-      const b = button(item.name, async () => {
+      const b = button(labels.get(item.name) || item.name, async () => {
         if (which === 'media') store.set('control-player', item.id);
         else await deckCommand(which === 'plans' ? 'power-plan' : 'default', { id: item.id, op:role });
         signature = '';
-      });
+      }, item.name);
+      b.title = item.name;
       b.classList.toggle('selected', item.id === chosen); b.setAttribute('aria-pressed', String(item.id === chosen)); return b;
     }));
   };
@@ -186,7 +201,7 @@ function mediaView(box, options, mode) {
     shuffle = button('Shuffle', () => call('shuffle', current.shuffle ? 0 : 1));
     repeat = button('Repeat', () => call('repeat', current.repeat === 'None' ? 1 : current.repeat === 'Track' ? 2 : 0));
     controls.append(shuffle, repeat);
-  } else controls.append(button('⏮', () => call('prev'), 'Previous track'), button('⏯', () => call('playpause'), 'Play or pause'), button('⏭', () => call('next'), 'Next track'));
+  } else controls.append(button(icon('skip-back'), () => call('prev'), 'Previous track'), button(icon('play'), () => call('playpause'), 'Play or pause'), button(icon('skip-forward'), () => call('next'), 'Next track'));
   return data => {
     current = selectedPlayer(data, options);
     title.textContent = current?.title || t('w.noMediaSelected'); source.textContent = current?.name || 'Choose a source in Media sources';
@@ -738,7 +753,7 @@ W.trackpad = {
     const scrollBarWidth = Math.max(16, Number(o.scrollBarWidth) || 36);
 
     const surface = h('div', 'deck-trackpad-surface',
-      h('div', 'deck-trackpad-icon', controlEnabled ? '🖱️' : '🔒'),
+      h('div', 'deck-trackpad-icon', icon(controlEnabled ? 'mouse' : 'lock')),
       h('div', 'deck-trackpad-hint', !controlEnabled
         ? 'Enable mouse control in widget settings'
         : (scrollBar !== 'none'
