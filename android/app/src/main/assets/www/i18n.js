@@ -7235,7 +7235,7 @@
       'Open configured projects and folders.': 'Abre projetos e pastas configurados.',
       'Output selection': 'Seleção de saída',
       'Overtime after minutes': 'Horas extras após (minutos)',
-      'Own sequence instead, e.g. 25 focus, 5 break, 25 focus, 15 long': 'Sequência própria, ex.: 25 foco, 5 pausa, 25 foco, 15 longa',
+      'Own sequence instead, e.g. 25 focus, 5 break, 25 focus, 15 long': 'Sequência própria, ex.: 25 focus, 5 break, 25 focus, 15 long',
       'PC volume slider (drag), mute and steps. Vertical when tall.': 'Controle deslizante de volume do PC (arraste), mudo e passos. Vertical quando alto.',
       'Pattern': 'Padrão',
       'Persistent elapsed meeting timer with overtime indication.': 'Cronômetro de reunião persistente com indicação de horas extras.',
