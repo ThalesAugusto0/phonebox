@@ -23,6 +23,8 @@
   "cursor": { "sessions": false },
   // App console widget (Windows): keys and dial bindings per app, matched by the focused window's process name
   "console": { "profiles": [] },
+  // Steam friends widget: enter your SteamID64 and a user Web API key in Settings › General (see docs/STEAM.md)
+  "steam": { "enabled": false, "steamId": null, "apiKey": null },
 
   // Night mode: between these times the screen dims and only the clock stays. Tap to wake it for 30 s.
   "night": { "enabled": true, "start": "00:30", "end": "07:30", "brightness": 0.02 },

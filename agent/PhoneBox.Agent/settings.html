@@ -640,6 +640,16 @@ nav a.on::before { color: var(--accent); }
       </div>
 
       <div class="card">
+        <h3 data-i18n="s.steam.title">Steam</h3>
+        <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="steam.enabled" aria-labelledby="steamEnabledLabel"><span></span></label> <span id="steamEnabledLabel" data-i18n="s.steam.enable">Connect Steam (for the Steam friends widget)</span></div>
+        <p class="hint" style="margin:0 0 12px" data-i18n="s.steam.hint">Create a user Web API key at steamcommunity.com/dev/apikey and enter your SteamID64 or profile URL. Custom profile names are resolved when saved; only the SteamID64 is stored. Your profile's friend list must be visible to this API key for GetFriendList; make Game details public to show games. The key stays on this computer. Step by step: docs/STEAM.md.</p>
+        <div class="grid2">
+          <div class="field"><label for="steamProfileInput" data-i18n="s.steam.id">SteamID64 or profile URL</label><input id="steamProfileInput" type="text" data-bind="steam.steamId" autocomplete="off" spellcheck="false" placeholder="76561198000000000"></div>
+          <div class="field"><label for="steamApiKeyInput" data-i18n="s.steam.key">User Web API key</label><input id="steamApiKeyInput" type="password" data-bind="steam.apiKey" autocomplete="off"></div>
+        </div>
+      </div>
+
+      <div class="card">
         <h3 data-i18n="s.obs.title">OBS Studio</h3>
         <div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-bind="obs.enabled"><span></span></label> <span data-i18n-html="s.obs.enable">Connect to OBS (for the <b>OBS</b> widget, the On air widget and rules)</span></div>
         <p class="hint" style="margin:0 0 12px" data-i18n-html="s.obs.hint">In OBS: Tools › WebSocket Server Settings › <i>Enable WebSocket server</i>; copy the password from <i>Show Connect Info</i>.</p>
@@ -1068,6 +1078,7 @@ const PRESETS_LINUX = [
   ['builtin:mute', 'Built-in: toggle mute'],
   ['builtin:monitor-off', 'Built-in: turn monitors off (X11)'],
   ['builtin:lock', 'Built-in: lock the session'],
+  ['builtin:wake', 'Built-in: wake a computer (Wake-on-LAN; args: MAC)'],
 ];
 const PRESETS_MACOS = [
   ['', 'Pick a preset…'],
@@ -1078,6 +1089,7 @@ const PRESETS_MACOS = [
   ['builtin:mute', 'Built-in: toggle mute'],
   ['builtin:monitor-off', 'Built-in: sleep the display'],
   ['builtin:lock', 'Built-in: lock (sleeps the display)'],
+  ['builtin:wake', 'Built-in: wake a computer (Wake-on-LAN; args: MAC)'],
 ];
 const presets = () => (osName === 'linux' ? PRESETS_LINUX : osName === 'macos' ? PRESETS_MACOS : PRESETS);
 const PRESETS = [
@@ -1092,6 +1104,7 @@ const PRESETS = [
   ['builtin:mute', 'Built-in: toggle mute'],
   ['builtin:monitor-off', 'Built-in: turn monitors off'],
   ['builtin:lock', 'Built-in: lock the PC'],
+  ['builtin:wake', 'Built-in: wake a computer (Wake-on-LAN; args: MAC)'],
 ];
 
 let cfg = null;        // settings being edited
@@ -2264,7 +2277,7 @@ const RULE_PRESETS = [
 let activeRules = [];
 
 function renderRules() {
-  cfg.rules ??= []; cfg.calendars ??= []; cfg.feeds ??= []; cfg.cameras ??= { ffmpeg: '', sources: [] }; cfg.photos ??= { folder: '', subfolders: true }; cfg.console ??= { profiles: [] }; cfg.phones ??= []; cfg.homeAssistant ??= {}; cfg.obs ??= { enabled: false, url: 'ws://127.0.0.1:4455' }; cfg.discord ??= { enabled: false };
+  cfg.rules ??= []; cfg.calendars ??= []; cfg.feeds ??= []; cfg.cameras ??= { ffmpeg: '', sources: [] }; cfg.photos ??= { folder: '', subfolders: true }; cfg.console ??= { profiles: [] }; cfg.phones ??= []; cfg.homeAssistant ??= {}; cfg.obs ??= { enabled: false, url: 'ws://127.0.0.1:4455' }; cfg.discord ??= { enabled: false }; cfg.steam ??= { enabled: false };
   $('rulePresets').replaceChildren(...RULE_PRESETS.map(([label, make]) => h('button', { class: 'btn', onclick: () => {
     cfg.rules.push({ id: '', enabled: true, ...make() });
     renderRules(); changed();
@@ -3215,6 +3228,7 @@ function fillDefaults() {
   for (const [k, v] of Object.entries({ language: 'auto', hour12: false, idleReturnSec: 90, switchCountdownSec: 3, touchGraceSec: 20, minDwellSec: 15, holdMaxMin: 30, keepAwake: true, openOnConnect: true,
     showSeconds: true, vibrate: true, finishToast: true, volumeKeys: true, artTint: true, proximityWake: true, orientation: 'landscape', theme: 'default', accent: '#2dd4bf' })) cfg.display[k] ??= v;
   cfg.charge ??= { enabled: false, min: 50, max: 80, method: 'ha' };
+  cfg.steam ??= { enabled: false };
 }
 
 async function load() {

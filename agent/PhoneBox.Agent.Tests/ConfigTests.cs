@@ -6,6 +6,23 @@ using Xunit;
 /// <summary>Config normalization: templates, the pre-0.6.2 page migration, grid limits, ids and what the phone sees.</summary>
 public class ConfigTests
 {
+    [Fact]
+    public void NullOrMissingSteamApiKeyKeepsStoredKeyButEmptyCanClearIt()
+    {
+        var proposed = JsonSerializer.Deserialize<AgentConfig>("{}", ConfigStore.ReadOpts)!;
+        Assert.True(ConfigStore.PreserveSteamApiKey(proposed, "stored-secret"));
+        Assert.Equal("stored-secret", proposed.Steam.ApiKey);
+
+        proposed = JsonSerializer.Deserialize<AgentConfig>("{\"steam\":{\"apiKey\":null}}", ConfigStore.ReadOpts)!;
+        Assert.True(ConfigStore.PreserveSteamApiKey(proposed, "stored-secret"));
+        Assert.Equal("stored-secret", proposed.Steam.ApiKey);
+
+        proposed.Steam.ApiKey = "";
+        Assert.False(ConfigStore.PreserveSteamApiKey(proposed, "stored-secret"));
+        Assert.Equal("", proposed.Steam.ApiKey);
+        Assert.False(ConfigStore.PreserveSteamApiKey(proposed, null));
+    }
+
     private static AgentConfig Load(string json)
     {
         var path = Path.Combine(Path.GetTempPath(), $"phonebox-cfg-{Guid.NewGuid():N}.json");
@@ -317,6 +334,9 @@ public class LanTests
     [InlineData("/api/feeds/open", true)]
     [InlineData("/api/photos", true)]
     [InlineData("/api/photos/0123456789abcdef", true)]
+    [InlineData("/api/steam", true)]
+    [InlineData("/api/steam/avatar", true)]
+    [InlineData("/api/steam/other", false)]
     [InlineData("/api/push/temperature", true)]
     [InlineData("/api/settings", false)]
     [InlineData("/api/pair", false)]

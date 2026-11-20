@@ -581,6 +581,20 @@
         channels: [{ id: 'c1', name: 'Game night', guild: 'Friends' }, { id: 'c2', name: 'Stand-up', guild: 'Work' }],
         notifications: [{ ts: now() - 60000, title: 'Ada', body: 'are you joining?' }] } });
     }
+    if (path === '/api/steam') return json({ enabled: true, snapshot: {
+      connected: true, error: null, totalFriends: 2, onlineCount: 1, updated: now(),
+      friends: [
+        { id: '76561198000000001', name: 'Ada', state: 1, game: 'Hades II', hasAvatar: true, lastLogoff: null },
+        { id: '76561198000000002', name: 'Linus', state: 0, game: null, hasAvatar: true, lastLogoff: Math.floor(now() / 1000) - 7200 },
+      ],
+      activity: [{ id: '76561198000000001', name: 'Ada', hasAvatar: true, kind: 'playing', game: 'Hades II', at: now() - 180000 }],
+    } });
+    if (path === '/api/steam/avatar') {
+      const ada = q.get('id') === '76561198000000001';
+      const letter = ada ? 'A' : 'L', fill = ada ? '#7c3aed' : '#2563eb';
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="48" fill="${fill}"/><text x="48" y="64" font-family="system-ui,sans-serif" font-size="48" font-weight="700" text-anchor="middle" fill="#fff">${letter}</text></svg>`;
+      return new Response(svg, { headers: { 'Content-Type': 'image/svg+xml' } });
+    }
     if (path.startsWith('/api/discord/') && method === 'POST') {
       if (!allows(await config(), (t) => t === 'discord')) return json({ error: "controlling Discord is turned off in the widget's settings" }, 400);
       const a = path.slice(13);

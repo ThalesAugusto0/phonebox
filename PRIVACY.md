@@ -4,7 +4,7 @@ PhoneBox has no accounts, no servers of its own, no telemetry, no analytics and 
 receives any data from you. This page lists every place the agent (on your computer) and the Android app (on your
 phone) connect to, so you can see exactly what leaves your machine and turn it off.
 
-Last updated: 2026-11-15 (PhoneBox 0.9.6).
+Last updated: 2026-11-20 (PhoneBox 0.9.6).
 
 ## What stays on your devices
 
@@ -13,6 +13,10 @@ Last updated: 2026-11-15 (PhoneBox 0.9.6).
   On macOS and Linux these files are readable only by your user (0600).
 - **Discord login**: if you use the Discord widget, `discord-token.json` next to `config.json` holds the access and
   refresh token Discord gave PhoneBox (on macOS and Linux readable only by your user).
+- **Steam key**: the SteamID64 and Web API key are stored in `config.json` on this computer. A custom profile name is
+  sent to Steam once when you save it, then only the SteamID64 is stored. The key is never sent to the phone or logged.
+  The activity widget derives its short history from successive polls in memory; it is not written to disk or logged and
+  starts empty after an agent restart.
 - **Last Claude quota reading**: `claude-quota.json` next to the log (usage percentages and reset times, no token),
   so the panel can show the last values after a restart, and `claude-quota-schedule.json` (when the next check may
   run, the last error message and, after Anthropic refused a token, a 16-character hash of that token, never the token
@@ -81,6 +85,8 @@ identifies your GitHub account to GitHub.
 | Feature | Where | What is sent |
 |---|---|---|
 | Discord widget | `discord.com/api/oauth2/token`, once at login and when the token needs renewing; `cdn.discordapp.com`, once per server icon and avatar shown (the agent fetches them, the phone never contacts Discord; the rest goes through the Discord app on this PC, locally). Turn off in **Settings › General › Discord** | The application's client ID and secret, and the one-time login code or the saved refresh token; for images only the image's id and hash, which Discord already knows |
+| Steam friends and activity | `api.steampowered.com`, only while Steam is enabled and an enabled page contains either widget. Clear the API key, turn off Steam, or remove both widgets to stop requests | The API key in the request header; your SteamID64 for the friend-list request; your custom profile name as `vanityurl` only when you save it; and friend SteamIDs in player-summary batches. Steam returns names, avatars, presence and public game details. The activity list is built from successive polls and stays in memory only |
+| Steam avatars | `*.steamstatic.com` and `steamcdn-a.akamaihd.net`, only when the agent fetches an avatar shown by either widget. Clear the API key, turn off Steam, or remove both widgets to stop requests | A request to the avatar URL Steam returned (including its image hash); the Web API key and SteamID64 are not sent to these image hosts |
 | GitHub widget | `api.github.com`, through your own GitHub CLI (`gh`) | Whatever `gh` sends with its own sign-in |
 | Hacker News widget (phone) | `hacker-news.firebaseio.com` | Nothing but the request |
 | Exchange rates widget (phone) | `api.frankfurter.dev` | The currencies you chose |
@@ -94,6 +100,7 @@ identifies your GitHub account to GitHub.
 | App console widget | Nothing. On Windows the agent reads the process name of the focused window to pick the matching app profile; that name stays on the computer, and the phone only gets the profile's name and key labels (a key without a label shows its keys, such as ctrl+z). With the widget's **Send keys to the computer** option on (off by default), a tap sends the profile's id and the key's slot, and the agent presses the keys only if the app in front still matches that profile | Nothing |
 | News feeds widget | The RSS and Atom addresses you add in **Settings › General**, fetched by the agent at most every 15 minutes and only while a page shows the widget; the phone never contacts the feed sites. With the widget's **Open articles on the PC** option on (off by default), tapping a headline opens its article in the computer's browser. Turn the requests off by removing the feeds in **Settings › General › News feeds**, or the widget from your pages | The request to that address, with the feed's last `ETag` / `Last-Modified` so an unchanged feed is not sent again |
 | Home Assistant | Your Home Assistant server | The access token you enter |
+| Wake-on-LAN | Your own network only: a UDP broadcast (port 9) to the machine's MAC address, sent only when you press a *wake a computer* key | The magic packet, which holds the MAC address you entered; nothing leaves your local network (a broadcast address you add must be one of this computer's own networks' or `255.255.255.255`). This computer's own MAC addresses are sent to the paired phone in its pairing answers; the phone does not store them |
 | Image widget | The image address you enter | The request to that address |
 | Camera widget | The RTSP cameras you add in **Settings › General › Cameras**, pulled by ffmpeg on this computer only while an enabled page shows a Camera widget for them, and stopped a few seconds after it leaves the screen. The phone gets JPEG pictures (5 a second by default, 1 to 10 per camera) over USB or the paired Wi-Fi link and never contacts the camera. The addresses, with the user names and passwords in them, stay in `config.json` and never go to the phone, but while a camera runs its address is visible in this computer's process list (ffmpeg's command line). The pictures are not stored, and the log names the camera, never its address | The camera's own RTSP login and stream requests |
 | Photo frame widget | Nothing outside your network: the photos in the folder you choose in **Settings › General** go from the agent to the phone over USB or the paired Wi-Fi link (on Windows and macOS large JPEG and PNG photos are scaled down first), one at a time and only while an enabled page shows the widget. Clearing the folder setting or removing the widget stops it, and clearing the folder also deletes the scaled copies. Photos that are only in the cloud (OneDrive Files On-Demand and the like) are skipped, so nothing is downloaded for the slideshow | Nothing |
