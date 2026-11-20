@@ -4064,6 +4064,11 @@
       's.steam.hint': 'Crie uma chave de Web API de usuário em steamcommunity.com/dev/apikey e informe seu SteamID64 ou a URL do perfil. Nomes de perfil personalizados são resolvidos ao salvar; só o SteamID64 é armazenado. A lista de amigos do seu perfil precisa estar visível para esta chave de API para o GetFriendList funcionar; torne os detalhes do jogo públicos para mostrar os jogos. A chave fica só neste computador. Passo a passo: docs/STEAM.md.',
       's.steam.id': 'SteamID64 ou URL do perfil',
       's.steam.key': 'Chave de Web API de usuário',
+      's.k.cycle': 'Alternar entre outras teclas',
+      's.k.cycleKeys': 'Teclas, uma por toque',
+      's.k.cycleAdd': 'Adicionar uma tecla',
+      's.k.cycleHint': 'Cada toque executa a próxima tecla da lista e depois recomeça da primeira. A tecla no telefone mostra a que foi executada por último (seu ícone e nome); antes do primeiro toque, ela mostra o próprio ícone e nome.',
+      's.k.cycleFew': 'Com apenas uma tecla na lista, esta tecla só executa aquela tecla; sem nenhuma, não faz nada. Teclas que não existem mais saem da lista ao salvar.',
     },
 
     nl: {
@@ -9736,6 +9741,18 @@
       'Play a sound when a step ends': 'Tocar um som quando uma etapa terminar',
       'Sound volume (%)': 'Volume do som (%)',
       'Built-in: wake a computer (Wake-on-LAN; args: MAC)': 'Interno: acordar um computador (Wake-on-LAN; args: MAC)',
+      "Control the PC cursor, tap to click, hold to drag, edge scroll bar, two fingers to right-click and scroll (Windows, Linux and macOS). On a Mac, three or four fingers swipe like its trackpad, and four or five spread or pinch.": 'Controla o cursor do PC: toque para clicar, segure para arrastar, barra de rolagem na borda, dois dedos para clique direito e rolar (Windows, Linux e macOS). No Mac, três ou quatro dedos deslizam como no trackpad dele, e quatro ou cinco dedos abrem ou fecham (pinça).',
+      'Lights up while the microphone or camera is in use (Windows, Linux, macOS), OBS records or streams, or a pushed value is on.': 'Acende enquanto o microfone ou a câmera está em uso (Windows, Linux, macOS), o OBS grava ou transmite, ou um valor enviado está ativo.',
+      'Haptic feedback': 'Feedback tátil',
+      'Tick while scrolling': 'Vibração leve ao rolar',
+      'No vibration': 'Sem vibração',
+      'Light vibration': 'Vibração leve',
+      'Normal vibration': 'Vibração normal',
+      'Strong vibration': 'Vibração forte',
+      'Pointer': 'Ponteiro',
+      'Scrolling': 'Rolagem',
+      'Haptics': 'Vibração',
+      "Sound volume (% of the phone's media volume)": 'Volume do som (% do volume de mídia do telefone)',
     },
   };
 
